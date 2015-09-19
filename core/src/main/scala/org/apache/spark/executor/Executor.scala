@@ -17,14 +17,16 @@
 
 package org.apache.spark.executor
 
-import java.io.{File, NotSerializableException}
+import java.io.{InputStreamReader, BufferedReader, File, NotSerializableException}
 import java.lang.management.ManagementFactory
 import java.net.URL
 import java.nio.ByteBuffer
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, HashMap}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 
 import org.apache.spark._
@@ -34,6 +36,13 @@ import org.apache.spark.shuffle.FetchFailedException
 import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
 import org.apache.spark.unsafe.memory.TaskMemoryManager
 import org.apache.spark.util._
+
+
+import java.lang.management.ManagementFactory
+import java.lang.management.MemoryMXBean
+import java.lang.management.MemoryUsage
+import scala.util.{Success, Failure}
+import ExecutionContext.Implicits.global
 
 /**
  * Spark executor, backed by a threadpool to run tasks.
@@ -208,6 +217,36 @@ private[spark] class Executor(
         env.mapOutputTracker.updateEpoch(task.epoch)
 
         // Run the actual task and measure its runtime.
+        //===============get freeMemory==================//
+        val memorymbean: MemoryMXBean = ManagementFactory.getMemoryMXBean
+        val usage: MemoryUsage = memorymbean.getHeapMemoryUsage
+        val heapMemUsage = usage.getUsed
+        val heapMemFree = usage.getInit - usage.getUsed
+        logInfo(s"INIT HEAP:${usage.getInit}")
+        logInfo(s"MAX HEAP:${usage.getMax}")
+        logInfo(s"USE HEAP:${usage.getUsed}")
+        logInfo(s"HEAP MEMORY USAGE:${heapMemUsage/1024/1024}MB")
+        logInfo(s"HEAP MEMORY FREE:${heapMemFree/1024/1024}MB")
+        logInfo(s"NON-HEAP MEMORY USAGE:${memorymbean.getNonHeapMemoryUsage}")
+        //===============get jvm heap instance number==============//
+        Future {
+          val pid: String = ManagementFactory.getRuntimeMXBean.getName.replaceAll("(\\d+)@.*", "$1")
+          val cmd_result = Runtime.getRuntime.exec("jmap -histo " + pid)
+          cmd_result
+        } onComplete {
+            case Success(p:Process)=>
+              val br: BufferedReader = new BufferedReader(new InputStreamReader(p.getInputStream))
+              var buf = ""
+              var lastLine = ""
+              while ({
+                buf = br.readLine
+                buf != null
+              }) lastLine = buf
+              logInfo(s"total num of current instance is:$lastLine")
+            case Failure(t:Throwable)=>
+              logError(s"invoke jmap is failed,info is ${t.getMessage}")
+        }
+
         taskStart = System.currentTimeMillis()
         var threwException = true
         val (value, accumUpdates) = try {
