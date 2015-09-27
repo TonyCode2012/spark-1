@@ -219,14 +219,14 @@ private[spark] class Executor(
         // Run the actual task and measure its runtime.
         //===============get freeMemory==================//
         val memorymbean: MemoryMXBean = ManagementFactory.getMemoryMXBean
-        val usage: MemoryUsage = memorymbean.getHeapMemoryUsage
-        val heapMemUsage = usage.getUsed
-        val heapMemFree = usage.getInit - usage.getUsed
-        logInfo(s"INIT HEAP:${usage.getInit}")
-        logInfo(s"MAX HEAP:${usage.getMax}")
-        logInfo(s"USE HEAP:${usage.getUsed}")
-        logInfo(s"HEAP MEMORY USAGE:${heapMemUsage/1024/1024}MB")
-        logInfo(s"HEAP MEMORY FREE:${heapMemFree/1024/1024}MB")
+        val memoryUsage: MemoryUsage = memorymbean.getHeapMemoryUsage
+        val heapMemUsage = memoryUsage.getUsed
+        val heapMemFree = memoryUsage.getInit - memoryUsage.getUsed
+        logInfo(s"INIT HEAP:${memoryUsage.getInit.toFloat/1024/1024}MB")
+        logInfo(s"MAX HEAP:${memoryUsage.getMax.toFloat/1024/1024/1024}GB")
+        logInfo(s"USE HEAP:${memoryUsage.getUsed.toFloat/1024/1024}MB")
+        logInfo(s"HEAP MEMORY USAGE:${heapMemUsage.toFloat/1024/1024}MB")
+        logInfo(s"HEAP MEMORY FREE:${heapMemFree.toFloat/1024/1024}MB")
         logInfo(s"NON-HEAP MEMORY USAGE:${memorymbean.getNonHeapMemoryUsage}")
         //===============get jvm heap instance number==============//
         Future {
@@ -235,11 +235,11 @@ private[spark] class Executor(
           cmd_result
         } onComplete {
             case Success(p:Process)=>
-              val br: BufferedReader = new BufferedReader(new InputStreamReader(p.getInputStream))
+              val bufferReader: BufferedReader = new BufferedReader(new InputStreamReader(p.getInputStream))
               var buf = ""
               var lastLine = ""
               while ({
-                buf = br.readLine
+                buf = bufferReader.readLine
                 buf != null
               }) lastLine = buf
               logInfo(s"total num of current instance is:$lastLine")
