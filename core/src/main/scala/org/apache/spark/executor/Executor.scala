@@ -17,14 +17,18 @@
 
 package org.apache.spark.executor
 
-import java.io.{File, NotSerializableException}
+import java.io.{InputStreamReader, BufferedReader, File, NotSerializableException}
 import java.lang.management.ManagementFactory
 import java.net.URL
 import java.nio.ByteBuffer
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 
+import org.apache.spark.adaptive.collectData
+
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, HashMap}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 
 import org.apache.spark._
@@ -35,12 +39,21 @@ import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
 import org.apache.spark.unsafe.memory.TaskMemoryManager
 import org.apache.spark.util._
 
+
+import java.lang.management.ManagementFactory
+import java.lang.management.MemoryMXBean
+import java.lang.management.MemoryUsage
+import scala.util.{Success, Failure}
+import ExecutionContext.Implicits.global
+
 /**
  * Spark executor, backed by a threadpool to run tasks.
  *
  * This can be used with Mesos, YARN, and the standalone scheduler.
  * An internal RPC interface (at the moment Akka) is used for communication with the driver,
  * except in the case of Mesos fine-grained mode.
+ *
+ * Add outer selftype.by yaoz
  */
 private[spark] class Executor(
     executorId: String,
@@ -48,7 +61,7 @@ private[spark] class Executor(
     env: SparkEnv,
     userClassPath: Seq[URL] = Nil,
     isLocal: Boolean = false)
-  extends Logging {
+  extends Logging { outer=>
 
   logInfo(s"Starting executor ID $executorId on host $executorHostname")
 
@@ -68,6 +81,12 @@ private[spark] class Executor(
 
   // Make sure the local hostname we report matches the cluster scheduler's name for this host
   Utils.setCustomHostname(executorHostname)
+
+  /**
+   * The collectData deamon thread to run. This will be running when a task starts.
+   * Once it is set, it will never be changed
+   */
+  @volatile var collectDataDeamonTask: Thread = _
 
   if (!isLocal) {
     // Setup an uncaught exception handler for non-local mode.
@@ -208,6 +227,12 @@ private[spark] class Executor(
         env.mapOutputTracker.updateEpoch(task.epoch)
 
         // Run the actual task and measure its runtime.
+        /** when the first task comes start collecting data.by yaoz*/
+        if(!collectData.isStarted){
+          outer.collectDataDeamonTask = new Thread(new collectData)
+          outer.collectDataDeamonTask.start()
+        }
+
         taskStart = System.currentTimeMillis()
         var threwException = true
         val (value, accumUpdates) = try {
@@ -229,6 +254,10 @@ private[spark] class Executor(
           }
         }
         val taskFinish = System.currentTimeMillis()
+
+        /** when this task is over,pause the collectData Thread.by yaoz*/
+        outer.collectDataDeamonTask.stop()
+
 
         // If the task has been killed, let's fail it.
         if (task.killed) {

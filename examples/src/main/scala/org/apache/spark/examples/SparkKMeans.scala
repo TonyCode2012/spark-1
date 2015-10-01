@@ -60,19 +60,32 @@ object SparkKMeans {
 
   def main(args: Array[String]) {
 
-    if (args.length < 3) {
+    /*if (args.length < 3) {
       System.err.println("Usage: SparkKMeans <file> <k> <convergeDist>")
       System.exit(1)
     }
+    val conf = new SparkConf().setAppName("Simple Application")
+    val sc = new SparkContext(conf)
+    val data = sc.textFile("data/mllib/kmeans_data.txt")
+    val parsedData = data.map(s => Vectors.dense(s.split(' ').map(_.toDouble))).cache()*/
+
+    //input file path
+    val filePath = "/home/spark/spark/spark-1/data/mllib/kmeans_data.txt"
+    // Cluster the data into two classes using KMeans
+    val numClusters = 2
+    val numIterations = 20
 
     showWarning()
 
     val sparkConf = new SparkConf().setAppName("SparkKMeans")
     val sc = new SparkContext(sparkConf)
     val lines = sc.textFile(args(0))
+    //val lines = sc.textFile(filePath)
     val data = lines.map(parseVector _).cache()
     val K = args(1).toInt
     val convergeDist = args(2).toDouble
+    //val K = numClusters.toInt
+    //val convergeDist = numIterations.toDouble
 
     val kPoints = data.takeSample(withReplacement = false, K, 42).toArray
     var tempDist = 1.0
