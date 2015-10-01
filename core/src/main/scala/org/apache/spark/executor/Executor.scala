@@ -23,6 +23,8 @@ import java.net.URL
 import java.nio.ByteBuffer
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 
+import org.apache.spark.adaptive.collectData
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, HashMap}
@@ -50,6 +52,8 @@ import ExecutionContext.Implicits.global
  * This can be used with Mesos, YARN, and the standalone scheduler.
  * An internal RPC interface (at the moment Akka) is used for communication with the driver,
  * except in the case of Mesos fine-grained mode.
+ *
+ * Add outer selftype.by yaoz
  */
 private[spark] class Executor(
     executorId: String,
@@ -57,7 +61,7 @@ private[spark] class Executor(
     env: SparkEnv,
     userClassPath: Seq[URL] = Nil,
     isLocal: Boolean = false)
-  extends Logging {
+  extends Logging { outer=>
 
   logInfo(s"Starting executor ID $executorId on host $executorHostname")
 
@@ -77,6 +81,12 @@ private[spark] class Executor(
 
   // Make sure the local hostname we report matches the cluster scheduler's name for this host
   Utils.setCustomHostname(executorHostname)
+
+  /**
+   * The collectData deamon thread to run. This will be running when a task starts.
+   * Once it is set, it will never be changed
+   */
+  @volatile var collectDataDeamonTask: Thread = _
 
   if (!isLocal) {
     // Setup an uncaught exception handler for non-local mode.
@@ -217,34 +227,10 @@ private[spark] class Executor(
         env.mapOutputTracker.updateEpoch(task.epoch)
 
         // Run the actual task and measure its runtime.
-        //===============get freeMemory==================//
-        val memorymbean: MemoryMXBean = ManagementFactory.getMemoryMXBean
-        val memoryUsage: MemoryUsage = memorymbean.getHeapMemoryUsage
-        val heapMemUsage = memoryUsage.getUsed
-        val heapMemFree = memoryUsage.getInit - memoryUsage.getUsed
-        logInfo(s"INIT HEAP:${memoryUsage.getInit.toFloat/1024/1024}MB")
-        logInfo(s"MAX HEAP:${memoryUsage.getMax.toFloat/1024/1024/1024}GB")
-        logInfo(s"USE HEAP:${memoryUsage.getUsed.toFloat/1024/1024}MB")
-        logInfo(s"HEAP MEMORY USAGE:${heapMemUsage.toFloat/1024/1024}MB")
-        logInfo(s"HEAP MEMORY FREE:${heapMemFree.toFloat/1024/1024}MB")
-        logInfo(s"NON-HEAP MEMORY USAGE:${memorymbean.getNonHeapMemoryUsage}")
-        //===============get jvm heap instance number==============//
-        Future {
-          val pid: String = ManagementFactory.getRuntimeMXBean.getName.replaceAll("(\\d+)@.*", "$1")
-          val cmd_result = Runtime.getRuntime.exec("jmap -histo " + pid)
-          cmd_result
-        } onComplete {
-            case Success(p:Process)=>
-              val bufferReader: BufferedReader = new BufferedReader(new InputStreamReader(p.getInputStream))
-              var buf = ""
-              var lastLine = ""
-              while ({
-                buf = bufferReader.readLine
-                buf != null
-              }) lastLine = buf
-              logInfo(s"total num of current instance is:$lastLine")
-            case Failure(t:Throwable)=>
-              logError(s"invoke jmap is failed,info is ${t.getMessage}")
+        /** when the first task comes start collecting data.by yaoz*/
+        if(!collectData.isStarted){
+          outer.collectDataDeamonTask = new Thread(new collectData)
+          outer.collectDataDeamonTask.start()
         }
 
         taskStart = System.currentTimeMillis()
@@ -268,6 +254,10 @@ private[spark] class Executor(
           }
         }
         val taskFinish = System.currentTimeMillis()
+
+        /** when this task is over,pause the collectData Thread.by yaoz*/
+        outer.collectDataDeamonTask.stop()
+
 
         // If the task has been killed, let's fail it.
         if (task.killed) {
