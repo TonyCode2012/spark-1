@@ -61,7 +61,7 @@ private[spark] class Executor(
     env: SparkEnv,
     userClassPath: Seq[URL] = Nil,
     isLocal: Boolean = false)
-  extends Logging { outer=>
+  extends Logging {
 
   logInfo(s"Starting executor ID $executorId on host $executorHostname")
 
@@ -81,12 +81,6 @@ private[spark] class Executor(
 
   // Make sure the local hostname we report matches the cluster scheduler's name for this host
   Utils.setCustomHostname(executorHostname)
-
-  /**
-   * The collectData deamon thread to run. This will be running when a task starts.
-   * Once it is set, it will never be changed
-   */
-  @volatile var collectDataDeamonTask: Thread = _
 
   if (!isLocal) {
     // Setup an uncaught exception handler for non-local mode.
@@ -140,6 +134,13 @@ private[spark] class Executor(
       attemptNumber: Int,
       taskName: String,
       serializedTask: ByteBuffer): Unit = {
+    /** start collecting runtime data.by yaoz*/
+    if(!collectData.isStarted) {
+      logInfo("Start collecting runtime data")
+      val tr = new collectData()
+      threadPool.execute(tr)
+      collectData.isStarted = true
+    }
     val tr = new TaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
       serializedTask)
     runningTasks.put(taskId, tr)
@@ -159,6 +160,8 @@ private[spark] class Executor(
     heartbeater.shutdown()
     heartbeater.awaitTermination(10, TimeUnit.SECONDS)
     threadPool.shutdown()
+    /** reset collectData switch.by yaoz*/
+    collectData.isStarted = false
     if (!isLocal) {
       env.stop()
     }
@@ -227,12 +230,6 @@ private[spark] class Executor(
         env.mapOutputTracker.updateEpoch(task.epoch)
 
         // Run the actual task and measure its runtime.
-        /** when the first task comes start collecting data.by yaoz*/
-        if(!collectData.isStarted){
-          outer.collectDataDeamonTask = new Thread(new collectData)
-          outer.collectDataDeamonTask.start()
-        }
-
         taskStart = System.currentTimeMillis()
         var threwException = true
         val (value, accumUpdates) = try {
@@ -255,10 +252,6 @@ private[spark] class Executor(
         }
         val taskFinish = System.currentTimeMillis()
 
-        /** when this task is over,pause the collectData Thread.by yaoz*/
-        outer.collectDataDeamonTask.stop()
-
-
         // If the task has been killed, let's fail it.
         if (task.killed) {
           throw new TaskKilledException
@@ -280,6 +273,55 @@ private[spark] class Executor(
           m.setResultSerializationTime(afterSerialization - beforeSerialization)
           m.updateAccumulators()
         }
+
+        /*/** system JVM HEAP parameters.*/
+        val memorymbean: MemoryMXBean = ManagementFactory.getMemoryMXBean
+        val memoryUsage: MemoryUsage = memorymbean.getHeapMemoryUsage
+        val heapMemMax = memoryUsage.getMax
+        val heapMemUsage = memoryUsage.getUsed
+        //val heapMemFree = memoryUsage.getInit - memoryUsage.getUsed
+        collectData.memoryData(System.currentTimeMillis) =
+          heapMemUsage.toDouble / heapMemMax.toDouble
+
+        /** get jvm heap instance number.by yaoz*/
+        Future {
+          val pid: String = ManagementFactory.getRuntimeMXBean.getName.replaceAll("(\\d+)@.*", "$1")
+          val cmd_result = Runtime.getRuntime.exec("jmap -histo " + pid)
+          cmd_result
+        } onComplete {
+          case Success(p: Process) =>
+            val bufferReader: BufferedReader = new BufferedReader(new InputStreamReader(p.getInputStream))
+            var buf = ""
+            var lastLine = ""
+            while ( {
+              buf = bufferReader.readLine
+              buf != null
+            }){
+              lastLine = buf
+              //logInfo(s"$buf")
+            }
+            logInfo(s"total num of current instance is:$lastLine")
+
+            //get instance data
+            val curInstanceData = lastLine
+            var totalInstanceNum = 0
+            var totalInstanceBytes = 0
+            var totalInstanceNumCur = curInstanceData.indexOf(" ")
+            val totalInstanceBytesCur = curInstanceData.lastIndexOf(" ")
+            //get all instance number in jvm
+            while(curInstanceData(totalInstanceNumCur)==' ') totalInstanceNumCur += 1
+            totalInstanceNum = curInstanceData.substring(totalInstanceNumCur,
+              curInstanceData.indexOf(" ",totalInstanceNumCur)-1).toInt
+            //get all instance volume
+            totalInstanceBytes = curInstanceData.substring(totalInstanceBytesCur+1,
+              curInstanceData.length-1).toInt
+            //store the data
+            collectData.instanceData(System.currentTimeMillis) =
+              (totalInstanceNum,totalInstanceBytes)
+
+          case Failure(t: Throwable) =>
+            logError(s"invoke jmap is failed,info is ${t.getMessage}")
+        }*/
 
         val directResult = new DirectTaskResult(valueBytes, accumUpdates, task.metrics.orNull)
         val serializedDirectResult = ser.serialize(directResult)

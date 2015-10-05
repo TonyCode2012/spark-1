@@ -73,7 +73,7 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging {
     settings.put(key, value)
     this
   }
-
+//1:90:79:8c:ce:31:d4:59:33:aa:89 Added on 19 Sep 2015 — Never used
   /**
    * The master URL to connect to, such as "local" to run locally with one thread, "local[4]" to
    * run locally with 4 cores, or "spark://master:7077" to run on a Spark standalone cluster.
