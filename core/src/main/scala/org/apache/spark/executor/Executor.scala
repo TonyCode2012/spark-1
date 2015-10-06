@@ -123,6 +123,9 @@ private[spark] class Executor(
   // Maintains the list of running tasks.
   private val runningTasks = new ConcurrentHashMap[Long, TaskRunner]
 
+  //collect data deamon thread.by yaoz
+  private val collectDataDeamonThread = new collectData
+
   // Executor for the heartbeat task.
   private val heartbeater = ThreadUtils.newDaemonSingleThreadScheduledExecutor("driver-heartbeater")
 
@@ -137,8 +140,7 @@ private[spark] class Executor(
     /** start collecting runtime data.by yaoz*/
     if(!collectData.isStarted) {
       logInfo("Start collecting runtime data")
-      val tr = new collectData()
-      threadPool.execute(tr)
+      threadPool.execute(collectDataDeamonThread)
       collectData.isStarted = true
     }
     val tr = new TaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
@@ -272,59 +274,21 @@ private[spark] class Executor(
           m.setJvmGCTime(computeTotalGcTime() - startGCTime)
           m.setResultSerializationTime(afterSerialization - beforeSerialization)
           m.updateAccumulators()
+          //collect deserialization and serialization time.by yaoz
+          val systemTime = System.currentTimeMillis
+          collectDataDeamonThread.serializeTime(systemTime) = m.resultSerializationTime
+          collectDataDeamonThread.deserializeTime(systemTime) = m.executorDeserializeTime
+          collectDataDeamonThread.deAndSerializationTime(systemTime) = m.resultSerializationTime + m.executorDeserializeTime
+          collectDataDeamonThread.baseResSerTimeByByte = m.resultSerializationTime / 1000 / valueBytes.array.length
+          collectDataDeamonThread.baseDeserTimeByByte = m.executorDeserializeTime / 1000 / valueBytes.array.length
         }
 
-        /*/** system JVM HEAP parameters.*/
-        val memorymbean: MemoryMXBean = ManagementFactory.getMemoryMXBean
-        val memoryUsage: MemoryUsage = memorymbean.getHeapMemoryUsage
-        val heapMemMax = memoryUsage.getMax
-        val heapMemUsage = memoryUsage.getUsed
-        //val heapMemFree = memoryUsage.getInit - memoryUsage.getUsed
-        collectData.memoryData(System.currentTimeMillis) =
-          heapMemUsage.toDouble / heapMemMax.toDouble
-
-        /** get jvm heap instance number.by yaoz*/
-        Future {
-          val pid: String = ManagementFactory.getRuntimeMXBean.getName.replaceAll("(\\d+)@.*", "$1")
-          val cmd_result = Runtime.getRuntime.exec("jmap -histo " + pid)
-          cmd_result
-        } onComplete {
-          case Success(p: Process) =>
-            val bufferReader: BufferedReader = new BufferedReader(new InputStreamReader(p.getInputStream))
-            var buf = ""
-            var lastLine = ""
-            while ( {
-              buf = bufferReader.readLine
-              buf != null
-            }){
-              lastLine = buf
-              //logInfo(s"$buf")
-            }
-            logInfo(s"total num of current instance is:$lastLine")
-
-            //get instance data
-            val curInstanceData = lastLine
-            var totalInstanceNum = 0
-            var totalInstanceBytes = 0
-            var totalInstanceNumCur = curInstanceData.indexOf(" ")
-            val totalInstanceBytesCur = curInstanceData.lastIndexOf(" ")
-            //get all instance number in jvm
-            while(curInstanceData(totalInstanceNumCur)==' ') totalInstanceNumCur += 1
-            totalInstanceNum = curInstanceData.substring(totalInstanceNumCur,
-              curInstanceData.indexOf(" ",totalInstanceNumCur)-1).toInt
-            //get all instance volume
-            totalInstanceBytes = curInstanceData.substring(totalInstanceBytesCur+1,
-              curInstanceData.length-1).toInt
-            //store the data
-            collectData.instanceData(System.currentTimeMillis) =
-              (totalInstanceNum,totalInstanceBytes)
-
-          case Failure(t: Throwable) =>
-            logError(s"invoke jmap is failed,info is ${t.getMessage}")
-        }*/
-
+        //get directResult serialization time.by yaoz
         val directResult = new DirectTaskResult(valueBytes, accumUpdates, task.metrics.orNull)
+        val beforeSerializeDirectResult = System.currentTimeMillis()
         val serializedDirectResult = ser.serialize(directResult)
+        val afterSerializeDirectResult = System.currentTimeMillis()
+        collectDataDeamonThread.baseDirectResSerTimeByByte = afterSerializeDirectResult - beforeSerializeDirectResult
         val resultSize = serializedDirectResult.limit
 
         // directSend = sending directly back to the driver
