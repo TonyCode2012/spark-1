@@ -21,7 +21,6 @@ package org.apache.spark.examples
 import breeze.linalg.{Vector, DenseVector, squaredDistance}
 
 import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.SparkContext._
 
 /**
  * K-means clustering.
@@ -63,11 +62,7 @@ object SparkKMeans {
     /*if (args.length < 3) {
       System.err.println("Usage: SparkKMeans <file> <k> <convergeDist>")
       System.exit(1)
-    }
-    val conf = new SparkConf().setAppName("Simple Application")
-    val sc = new SparkContext(conf)
-    val data = sc.textFile("data/mllib/kmeans_data.txt")
-    val parsedData = data.map(s => Vectors.dense(s.split(' ').map(_.toDouble))).cache()*/
+    }*/
 
     //input file path
     val filePath = "/home/spark/spark/spark-1/data/mllib/kmeans_data.txt"

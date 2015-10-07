@@ -23,7 +23,7 @@ import java.net.URL
 import java.nio.ByteBuffer
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 
-import org.apache.spark.adaptive.collectData
+import org.apache.spark.adaptive.CollectData
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -124,7 +124,7 @@ private[spark] class Executor(
   private val runningTasks = new ConcurrentHashMap[Long, TaskRunner]
 
   //collect data deamon thread.by yaoz
-  private val collectDataDeamonThread = new collectData
+  private val collectDataDeamonThread = new CollectData(env)
 
   // Executor for the heartbeat task.
   private val heartbeater = ThreadUtils.newDaemonSingleThreadScheduledExecutor("driver-heartbeater")
@@ -138,10 +138,10 @@ private[spark] class Executor(
       taskName: String,
       serializedTask: ByteBuffer): Unit = {
     /** start collecting runtime data.by yaoz*/
-    if(!collectData.isStarted) {
+    if(!CollectData.isStarted) {
       logInfo("Start collecting runtime data")
       threadPool.execute(collectDataDeamonThread)
-      collectData.isStarted = true
+      CollectData.isStarted = true
     }
     val tr = new TaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
       serializedTask)
@@ -163,7 +163,7 @@ private[spark] class Executor(
     heartbeater.awaitTermination(10, TimeUnit.SECONDS)
     threadPool.shutdown()
     /** reset collectData switch.by yaoz*/
-    collectData.isStarted = false
+    CollectData.isStarted = false
     if (!isLocal) {
       env.stop()
     }
@@ -278,17 +278,26 @@ private[spark] class Executor(
           val systemTime = System.currentTimeMillis
           collectDataDeamonThread.serializeTime(systemTime) = m.resultSerializationTime
           collectDataDeamonThread.deserializeTime(systemTime) = m.executorDeserializeTime
-          collectDataDeamonThread.deAndSerializationTime(systemTime) = m.resultSerializationTime + m.executorDeserializeTime
-          collectDataDeamonThread.baseResSerTimeByByte = m.resultSerializationTime / 1000 / valueBytes.array.length
-          collectDataDeamonThread.baseDeserTimeByByte = m.executorDeserializeTime / 1000 / valueBytes.array.length
+          collectDataDeamonThread.deAndSerializationTime(systemTime) =
+            m.resultSerializationTime + m.executorDeserializeTime
+          val baseResSerVelocity = m.resultSerializationTime / valueBytes.array.length
+          if(baseResSerVelocity != 0)
+            collectDataDeamonThread.baseResSerTimeByByte = baseResSerVelocity
+          val baseDeserVelocity = m.executorDeserializeTime / valueBytes.array.length
+          if(baseDeserVelocity != 0)
+            collectDataDeamonThread.baseDeserTimeByByte = baseDeserVelocity
+
         }
 
         //get directResult serialization time.by yaoz
         val directResult = new DirectTaskResult(valueBytes, accumUpdates, task.metrics.orNull)
+        val tmp = directResult.toString.getBytes().length
         val beforeSerializeDirectResult = System.currentTimeMillis()
         val serializedDirectResult = ser.serialize(directResult)
+        val tmp2 = serializedDirectResult.toString.getBytes().length
         val afterSerializeDirectResult = System.currentTimeMillis()
-        collectDataDeamonThread.baseDirectResSerTimeByByte = afterSerializeDirectResult - beforeSerializeDirectResult
+        collectDataDeamonThread.baseDirectResSerTimeByByte =
+          afterSerializeDirectResult - beforeSerializeDirectResult
         val resultSize = serializedDirectResult.limit
 
         // directSend = sending directly back to the driver

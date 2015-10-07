@@ -22,7 +22,7 @@ import java.util.Properties
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
-import org.apache.spark.adaptive.collectData
+import org.apache.spark.adaptive.CollectData
 
 import scala.collection.Map
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, Stack}
@@ -158,7 +158,7 @@ class DAGScheduler(
    * The collectData deamon thread to run. This will be running when a task starts.
    * Once it is set, it will never be changed.by yaoz
    */
-  @volatile var collectDataDeamonTask = new Thread(new collectData)
+  @volatile var collectDataDeamonTask = new Thread(new CollectData(env))
 
   /**
    * Contains the locations that each RDD's partitions are cached on.  This map's keys are RDD ids
@@ -861,7 +861,7 @@ class DAGScheduler(
       SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos, properties))
 
     /** when job starts,start collecting data.by yaoz*/
-    if(!collectData.isStarted){
+    if(!CollectData.isStarted){
     //  collectDataDeamonTask.run()
     //  collectData.isStarted = true
     }
