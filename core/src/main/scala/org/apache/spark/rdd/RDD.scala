@@ -21,6 +21,7 @@ import java.util.Random
 
 import scala.collection.{mutable, Map}
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.HashMap
 import scala.language.implicitConversions
 import scala.reflect.{classTag, ClassTag}
 
@@ -42,6 +43,7 @@ import org.apache.spark.util.{BoundedPriorityQueue, Utils}
 import org.apache.spark.util.collection.OpenHashMap
 import org.apache.spark.util.random.{BernoulliSampler, PoissonSampler, BernoulliCellSampler,
   SamplingUtils}
+import org.apache.spark.serializer._
 
 /**
  * A Resilient Distributed Dataset (RDD), the basic abstraction in Spark. Represents an immutable,
@@ -132,6 +134,36 @@ abstract class RDD[T: ClassTag](
   // =======================================================================
   // Methods and fields available on all RDDs
   // =======================================================================
+
+  /** partition to responding serializer.by yaoz*/
+  val partitionIdToSerId: HashMap[Int,Int] = _
+
+  /** serializer map.by yaoz*/
+  val serializerMap: HashMap[Int,Serializer] = _
+
+  /** get serializer by id.by yaoz*/
+  def getSerializer(taskId: Int): Serializer = {
+    if(!partitionIdToSerId.contains(taskId)){
+      throw new NoSuchElementException(
+        "there is something wrong when add serializer !")
+    }
+    val serId = partitionIdToSerId(taskId)
+    if(!serializerMap.contains(serId)){
+      throw new NoSuchElementException(
+        "Something wrong with adding serializer to map")
+    }
+    serializerMap(serId)
+  }
+
+  /** add new serializer.by yaoz*/
+  def addSerializer(taskId: Int, serializer: Serializer): Unit ={
+    val serId = serializer.getClass.getName.hashCode()
+    partitionIdToSerId(taskId) = serId
+    //if not cache this serializer, put it to serializerMap
+    if(!serializerMap.contains(serId)){
+      serializerMap(serId) = serializer
+    }
+  }
 
   /** The SparkContext that created this RDD. */
   def sparkContext: SparkContext = sc

@@ -105,6 +105,11 @@ private[spark] class LocalBackend(
   private val listenerBus = scheduler.sc.listenerBus
 
   /**
+   * called by Executor to get scheduler.by yaoz
+   */
+  def getScheduler:TaskSchedulerImpl = scheduler
+
+  /**
    * Returns a list of URLs representing the user classpath.
    *
    * @param conf Spark configuration.

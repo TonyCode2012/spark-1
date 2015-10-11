@@ -52,12 +52,13 @@ import org.apache.spark.util.{RpcUtils, Utils}
  *
  * NOTE: This is not intended for external use. This is exposed for Shark and may be made private
  *       in a future release.
+ *       change serializer from val to var.by yaoz
  */
 @DeveloperApi
 class SparkEnv (
     val executorId: String,
     private[spark] val rpcEnv: RpcEnv,
-    val serializer: Serializer,
+    var serializer: Serializer,
     val closureSerializer: Serializer,
     val cacheManager: CacheManager,
     val mapOutputTracker: MapOutputTracker,
@@ -284,8 +285,10 @@ object SparkEnv extends Logging {
       instantiateClass[T](conf.get(propertyName, defaultClassName))
     }
 
+    //change serializer from val to var.by yaoz
     val serializer = instantiateClassFromConf[Serializer](
-      "spark.serializer", "org.apache.spark.serializer.JavaSerializer")
+      "spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+      //"org.apache.spark.serializer.JavaSerializer")
     logDebug(s"Using serializer: ${serializer.getClass}")
 
     val closureSerializer = instantiateClassFromConf[Serializer](

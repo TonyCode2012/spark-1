@@ -119,6 +119,11 @@ private[spark] class TaskSchedulerImpl(
   // This is a var so that we can reset it for testing purposes.
   private[spark] var taskResultGetter = new TaskResultGetter(sc.env, this)
 
+  /**
+   * called by Executor to get dagScheduler.by yaoz
+   */
+  def getDAGScheduler: DAGScheduler = dagScheduler
+
   override def setDAGScheduler(dagScheduler: DAGScheduler) {
     this.dagScheduler = dagScheduler
   }

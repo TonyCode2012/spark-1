@@ -20,11 +20,14 @@ private[spark] class CollectData(
     env: SparkEnv)
   extends Runnable with Logging{
 
+  //system configuration
+  private[spark] val conf = env.conf
+
   /** collect runtime data.by yaoz*/
   private[spark] val memoryData = HashMap[Long,Double]()
-  private[spark] val instanceData = HashMap[Long,(Long,Long)]()
-  private[spark] val deserializeTime = HashMap[Long,Long]()
-  private[spark] val serializeTime = HashMap[Long,Long]()
+  private[spark] val instanceData = HashMap[Long,(Long,Double)]()
+  private[spark] val deserializeTime = HashMap[String,Double]()
+  private[spark] val serializeTime = HashMap[String,Double]()
   private[spark] val deAndSerializationTime = HashMap[Long,Long]()
 
   /** base metrics byte/s.*/
@@ -36,12 +39,21 @@ private[spark] class CollectData(
   private[spark] var sleepTimeout: Long = 3000
 
   //memory threshold
-  private[spark] val memoThreshold =
-    env.conf.getOption("spark.storage.memoryFraction")
-      .map(_.toDouble).getOrElse(0.5) - 0.1
+  private[spark] val memoyUpperThreshold =
+      conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5) - 0.2
+  private[spark] val memoryLowerThreshold =
+    conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5) - 0.3
+
+  //if jvm heap volume reaches indicated threshold,try to adopt KryoSerializer
+  private[spark] var adoptKryoSerializer: Boolean = false
+  private[spark] var conKryoSerializer: Int = 0
+  private[spark] var proKryoSerializer: Int = 0
+  
+  //current serializer
+  private [spark] var serializerCur = "org.apache.spark.serializer.JavaSerializer"
 
   //strategy decision
-  private[spark] var strategyDecision: StrategyDecision = null
+  private[spark] var strategyDecision: StrategyDecision = new StrategyDecision(env)
 
   override def run(): Unit = {
     while(true) {
@@ -97,10 +109,33 @@ private[spark] class CollectData(
       //====================get I/O information====================//
 
       /** when memory usage reaches threshold change storage strategy.*/
-      if(memoryUsageFraction > memoThreshold){
-        if(strategyDecision == null)
-          strategyDecision = new StrategyDecision
-        strategyDecision.decision(this,env)
+      if(memoryUsageFraction > memoyUpperThreshold && !adoptKryoSerializer){
+        conKryoSerializer += 1
+        if(proKryoSerializer > 0) {
+          proKryoSerializer -= 1
+        }
+        if(conKryoSerializer >= 3) {
+          serializerCur = "org.apache.spark.serializer.KryoSerializer"
+          strategyDecision.changeSerializer(serializerCur)
+          conKryoSerializer = 0
+        }
+      } else if(memoryUsageFraction < memoryLowerThreshold && adoptKryoSerializer){
+        proKryoSerializer += 1
+        if(conKryoSerializer > 0) {
+          conKryoSerializer -= 1
+        }
+        if(proKryoSerializer >= 3) {
+          serializerCur = "org.apache.spark.serializer.JavaSerializer"
+          strategyDecision.changeSerializer(serializerCur)
+          proKryoSerializer = 0
+        }
+      } else {
+        if(conKryoSerializer > 0) {
+          conKryoSerializer -= 1
+        }
+        if(proKryoSerializer > 0) {
+          proKryoSerializer -= 1
+        }
       }
 
       /** set collection data interval to 1ms. */

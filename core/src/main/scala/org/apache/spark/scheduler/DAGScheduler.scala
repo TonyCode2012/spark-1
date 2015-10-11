@@ -193,6 +193,13 @@ class DAGScheduler(
   taskScheduler.setDAGScheduler(this)
 
   /**
+   * called by Executor to get running stage.by yaoz
+   */
+  def getStage(stageId: Int): Stage ={
+    stageIdToStage(stageId)
+  }
+
+  /**
    * Called by the TaskSetManager to report task's starting.
    */
   def taskStarted(task: Task[_], taskInfo: TaskInfo) {

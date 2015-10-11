@@ -33,7 +33,7 @@ import scala.util.control.NonFatal
 
 import org.apache.spark._
 import org.apache.spark.deploy.SparkHadoopUtil
-import org.apache.spark.scheduler.{DirectTaskResult, IndirectTaskResult, Task}
+import org.apache.spark.scheduler._
 import org.apache.spark.shuffle.FetchFailedException
 import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
 import org.apache.spark.unsafe.memory.TaskMemoryManager
@@ -124,7 +124,7 @@ private[spark] class Executor(
   private val runningTasks = new ConcurrentHashMap[Long, TaskRunner]
 
   //collect data deamon thread.by yaoz
-  private val collectDataDeamonThread = new CollectData(env)
+  private val collectDataDeamon = new CollectData(env)
 
   // Executor for the heartbeat task.
   private val heartbeater = ThreadUtils.newDaemonSingleThreadScheduledExecutor("driver-heartbeater")
@@ -140,7 +140,7 @@ private[spark] class Executor(
     /** start collecting runtime data.by yaoz*/
     if(!CollectData.isStarted) {
       logInfo("Start collecting runtime data")
-      threadPool.execute(collectDataDeamonThread)
+      threadPool.execute(collectDataDeamon)
       CollectData.isStarted = true
     }
     val tr = new TaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
@@ -217,6 +217,7 @@ private[spark] class Executor(
         updateDependencies(taskFiles, taskJars)
         task = ser.deserialize[Task[Any]](taskBytes, Thread.currentThread.getContextClassLoader)
         task.setTaskMemoryManager(taskMemoryManager)
+        val taskClass = taskBytes.getClass //by yaoz
 
         // If this task has been killed before we deserialized it, let's quit now. Otherwise,
         // continue executing the task.
@@ -260,6 +261,20 @@ private[spark] class Executor(
         }
 
         val resultSer = env.serializer.newInstance()
+        //if adaptively use kryo serializer,register this class
+        var valueClass = resultSer.getClass.toString
+        valueClass = valueClass.substring(valueClass.indexOf(" ")+1,valueClass.length)
+        conf.registerKryoClasses(Array(value.getClass))
+        //if(valueClass.indexOf("org.apache.spark.serializer.KryoSerializer") != -1){
+        //}
+        //set this partition serializer
+        val methodGetScheduler = execBackend.getClass.getMethod("getScheduler")
+        val scheduler = methodGetScheduler.invoke(execBackend)
+        val methodGetDAGScheduler = scheduler.getClass.getMethod("getDAGScheduler")
+        val dagScheduler = methodGetDAGScheduler.invoke(scheduler)
+        val methodGetStage = dagScheduler.getClass.getMethod("getStage",task.stageId.getClass)
+        val stage = methodGetStage.invoke(dagScheduler,task.stageId:java.lang.Integer)
+        val resultSertype = resultSer.getClass.toString //by yaoz
         val beforeSerialization = System.currentTimeMillis()
         val valueBytes = resultSer.serialize(value)
         val afterSerialization = System.currentTimeMillis()
@@ -276,17 +291,16 @@ private[spark] class Executor(
           m.updateAccumulators()
           //collect deserialization and serialization time.by yaoz
           val systemTime = System.currentTimeMillis
-          collectDataDeamonThread.serializeTime(systemTime) = m.resultSerializationTime
-          collectDataDeamonThread.deserializeTime(systemTime) = m.executorDeserializeTime
-          collectDataDeamonThread.deAndSerializationTime(systemTime) =
+          collectDataDeamon.serializeTime(collectDataDeamon.serializerCur) =
+            m.resultSerializationTime
+          collectDataDeamon.deserializeTime(collectDataDeamon.serializerCur) =
+            m.executorDeserializeTime
+          collectDataDeamon.deAndSerializationTime(systemTime) =
             m.resultSerializationTime + m.executorDeserializeTime
-          val baseResSerVelocity = m.resultSerializationTime / valueBytes.array.length
-          if(baseResSerVelocity != 0)
-            collectDataDeamonThread.baseResSerTimeByByte = baseResSerVelocity
-          val baseDeserVelocity = m.executorDeserializeTime / valueBytes.array.length
-          if(baseDeserVelocity != 0)
-            collectDataDeamonThread.baseDeserTimeByByte = baseDeserVelocity
-
+          collectDataDeamon.baseResSerTimeByByte =
+            m.resultSerializationTime / valueBytes.array.length
+          collectDataDeamon.baseDeserTimeByByte =
+            m.executorDeserializeTime / valueBytes.array.length
         }
 
         //get directResult serialization time.by yaoz
@@ -296,7 +310,7 @@ private[spark] class Executor(
         val serializedDirectResult = ser.serialize(directResult)
         val tmp2 = serializedDirectResult.toString.getBytes().length
         val afterSerializeDirectResult = System.currentTimeMillis()
-        collectDataDeamonThread.baseDirectResSerTimeByByte =
+        collectDataDeamon.baseDirectResSerTimeByByte =
           afterSerializeDirectResult - beforeSerializeDirectResult
         val resultSize = serializedDirectResult.limit
 
