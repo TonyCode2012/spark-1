@@ -136,13 +136,13 @@ abstract class RDD[T: ClassTag](
   // =======================================================================
 
   /** partition to responding serializer.by yaoz*/
-  val partitionIdToSerId: HashMap[Int,Int] = _
+  val partitionIdToSerId = new HashMap[Long,Int]
 
   /** serializer map.by yaoz*/
-  val serializerMap: HashMap[Int,Serializer] = _
+  val serializerMap = new HashMap[Int,Serializable]
 
   /** get serializer by id.by yaoz*/
-  def getSerializer(taskId: Int): Serializer = {
+  def getSerializer(taskId: Long): Serializable = {
     if(!partitionIdToSerId.contains(taskId)){
       throw new NoSuchElementException(
         "there is something wrong when add serializer !")
@@ -156,7 +156,7 @@ abstract class RDD[T: ClassTag](
   }
 
   /** add new serializer.by yaoz*/
-  def addSerializer(taskId: Int, serializer: Serializer): Unit ={
+  def addSerializer(taskId: Long, serializer: Serializable): Unit ={
     val serId = serializer.getClass.getName.hashCode()
     partitionIdToSerId(taskId) = serId
     //if not cache this serializer, put it to serializerMap

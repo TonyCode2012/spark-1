@@ -76,6 +76,9 @@ private[scheduler] abstract class Stage(
 
   private var _internalAccumulators: Seq[Accumulator[Long]] = Seq.empty
 
+  /** Get rdd.by yaoz*/
+  def getRDD:RDD[_] = rdd
+
   /** Internal accumulators shared across all tasks in this stage. */
   def internalAccumulators: Seq[Accumulator[Long]] = _internalAccumulators
 

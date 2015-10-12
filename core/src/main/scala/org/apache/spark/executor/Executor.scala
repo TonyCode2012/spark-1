@@ -23,6 +23,7 @@ import java.net.URL
 import java.nio.ByteBuffer
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 
+import org.apache.hadoop.io.serializer.Serializer
 import org.apache.spark.adaptive.CollectData
 
 import scala.collection.JavaConverters._
@@ -274,7 +275,11 @@ private[spark] class Executor(
         val dagScheduler = methodGetDAGScheduler.invoke(scheduler)
         val methodGetStage = dagScheduler.getClass.getMethod("getStage",task.stageId.getClass)
         val stage = methodGetStage.invoke(dagScheduler,task.stageId:java.lang.Integer)
-        val resultSertype = resultSer.getClass.toString //by yaoz
+        val methodGetRDD = stage.getClass.getMethod("getRDD")
+        val rdd = methodGetRDD.invoke(stage)
+        val methodAddSerializer = rdd.getClass.getMethod(
+          "addSerializer",taskId.getClass,env.serializer.getClass)
+        methodAddSerializer.invoke(rdd,taskId:java.lang.Long,resultSer)
         val beforeSerialization = System.currentTimeMillis()
         val valueBytes = resultSer.serialize(value)
         val afterSerialization = System.currentTimeMillis()
