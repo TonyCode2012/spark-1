@@ -19,6 +19,8 @@ package org.apache.spark.rdd
 
 import java.util.Random
 
+import org.json4s
+
 import scala.collection.{mutable, Map}
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.HashMap
@@ -139,10 +141,10 @@ abstract class RDD[T: ClassTag](
   val partitionIdToSerId = new HashMap[Long,Int]
 
   /** serializer map.by yaoz*/
-  val serializerMap = new HashMap[Int,Serializable]
+  val serializerMap = new HashMap[Int,Serializer]
 
   /** get serializer by id.by yaoz*/
-  def getSerializer(taskId: Long): Serializable = {
+  def getSerializer(taskId: Long): Serializer = {
     if(!partitionIdToSerId.contains(taskId)){
       throw new NoSuchElementException(
         "there is something wrong when add serializer !")
@@ -155,8 +157,18 @@ abstract class RDD[T: ClassTag](
     serializerMap(serId)
   }
 
-  /** add new serializer.by yaoz*/
-  def addSerializer(taskId: Long, serializer: Serializable): Unit ={
+  /** add KryoSerializer.by yaoz*/
+  def addSerializer(taskId: Long, serializer: KryoSerializer): Unit ={
+    val serId = serializer.getClass.getName.hashCode()
+    partitionIdToSerId(taskId) = serId
+    //if not cache this serializer, put it to serializerMap
+    if(!serializerMap.contains(serId)){
+      serializerMap(serId) = serializer
+    }
+  }
+
+  /** add JavaSerializer.by yaoz*/
+  def addSerializer(taskId: Long, serializer: JavaSerializer): Unit ={
     val serId = serializer.getClass.getName.hashCode()
     partitionIdToSerId(taskId) = serId
     //if not cache this serializer, put it to serializerMap

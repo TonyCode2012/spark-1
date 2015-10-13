@@ -279,7 +279,7 @@ private[spark] class Executor(
         val rdd = methodGetRDD.invoke(stage)
         val methodAddSerializer = rdd.getClass.getMethod(
           "addSerializer",taskId.getClass,env.serializer.getClass)
-        methodAddSerializer.invoke(rdd,taskId:java.lang.Long,resultSer)
+        methodAddSerializer.invoke(rdd,taskId:java.lang.Long,env.serializer)
         val beforeSerialization = System.currentTimeMillis()
         val valueBytes = resultSer.serialize(value)
         val afterSerialization = System.currentTimeMillis()

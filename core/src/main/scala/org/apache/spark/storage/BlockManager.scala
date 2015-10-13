@@ -58,12 +58,13 @@ private[spark] class BlockResult(
  * retrieving blocks both locally and remotely into various stores (memory, disk, and off-heap).
  *
  * Note that #initialize() must be called before the BlockManager is usable.
+ *        change defaultSerializer from val to var.by yaoz
  */
 private[spark] class BlockManager(
     executorId: String,
     rpcEnv: RpcEnv,
     val master: BlockManagerMaster,
-    defaultSerializer: Serializer,
+    var defaultSerializer: Serializer,
     maxMemory: Long,
     val conf: SparkConf,
     mapOutputTracker: MapOutputTracker,
@@ -204,6 +205,11 @@ private[spark] class BlockManager(
     if (externalShuffleServiceEnabled && !blockManagerId.isDriver) {
       registerWithExternalShuffleServer()
     }
+  }
+
+  /** set defualt serializer.by yaoz*/
+  def setDefualtSerializer(serializer: Serializer): Unit ={
+    defaultSerializer = serializer
   }
 
   private def registerWithExternalShuffleServer() {

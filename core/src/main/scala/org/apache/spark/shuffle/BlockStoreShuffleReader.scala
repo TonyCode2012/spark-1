@@ -57,10 +57,14 @@ private[spark] class BlockStoreShuffleReader[K, C](
     val serializerInstance = ser.newInstance()
 
     // Create a key/value iterator for each stream
+    var partitionIndex = startPartition.toLong
     val recordIter = wrappedStreams.flatMap { wrappedStream =>
       // Note: the asKeyValueIterator below wraps a key/value iterator inside of a
       // NextIterator. The NextIterator makes sure that close() is called on the
       // underlying InputStream when all records have been read.
+      //val ser = dep.rdd.getSerializer(partitionIndex)
+      //val serializerInstance = ser.newInstance()
+      //partitionIndex += 1
       serializerInstance.deserializeStream(wrappedStream).asKeyValueIterator
     }
 
@@ -98,6 +102,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
       case Some(keyOrd: Ordering[K]) =>
         // Create an ExternalSorter to sort the data. Note that if spark.shuffle.spill is disabled,
         // the ExternalSorter won't spill to disk.
+        //val ser = Serializer.getSerializer(dep.serializer)
         val sorter = new ExternalSorter[K, C, C](ordering = Some(keyOrd), serializer = Some(ser))
         sorter.insertAll(aggregatedIter)
         context.taskMetrics().incMemoryBytesSpilled(sorter.memoryBytesSpilled)

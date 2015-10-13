@@ -43,6 +43,8 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
     logDebug(s"Looking for partition $key")
     blockManager.get(key) match {
       case Some(blockResult) =>
+        //set blockManager serializer
+        blockManager.setDefualtSerializer(rdd.getSerializer(partition.index.toLong))
         // Partition is already materialized, so just return its values
         val existingMetrics = context.taskMetrics
           .getInputMetricsForReadMethod(blockResult.readMethod)
