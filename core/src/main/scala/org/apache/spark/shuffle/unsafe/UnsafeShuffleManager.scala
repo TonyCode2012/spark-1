@@ -157,7 +157,8 @@ private[spark] class UnsafeShuffleManager(conf: SparkConf) extends ShuffleManage
   override def getWriter[K, V](
       handle: ShuffleHandle,
       mapId: Int,
-      context: TaskContext): ShuffleWriter[K, V] = {
+      context: TaskContext,
+      serializer: Serializer = SparkEnv.get.serializer): ShuffleWriter[K, V] = {
     handle match {
       case unsafeShuffleHandle: UnsafeShuffleHandle[K @unchecked, V @unchecked] =>
         numMapsForShufflesThatUsedNewPath.putIfAbsent(handle.shuffleId, unsafeShuffleHandle.numMaps)

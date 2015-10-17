@@ -4,6 +4,7 @@ import java.io.{InputStreamReader, BufferedReader}
 import java.lang.management.{MemoryUsage, ManagementFactory, MemoryMXBean}
 
 import org.apache.spark._
+import org.apache.spark.executor.Executor
 import org.apache.spark.Logging
 
 import scala.collection.mutable
@@ -17,7 +18,8 @@ import ExecutionContext.Implicits.global
  * Created by spark on 15-9-27.
  */
 private[spark] class CollectData(
-    env: SparkEnv)
+    env: SparkEnv,
+    executor: Executor)
   extends Runnable with Logging{
 
   //system configuration
@@ -53,7 +55,7 @@ private[spark] class CollectData(
   private [spark] var serializerCur = "org.apache.spark.serializer.JavaSerializer"
 
   //strategy decision
-  private[spark] var strategyDecision: StrategyDecision = new StrategyDecision(env)
+  private[spark] var strategyDecision: StrategyDecision = new StrategyDecision(env,executor)
 
   override def run(): Unit = {
     while(true) {

@@ -17,7 +17,8 @@
 
 package org.apache.spark.shuffle
 
-import org.apache.spark.{TaskContext, ShuffleDependency}
+import org.apache.spark.{SparkEnv, TaskContext, ShuffleDependency}
+import org.apache.spark.serializer.Serializer
 
 /**
  * Pluggable interface for shuffle systems. A ShuffleManager is created in SparkEnv on the driver
@@ -36,8 +37,8 @@ private[spark] trait ShuffleManager {
       numMaps: Int,
       dependency: ShuffleDependency[K, V, C]): ShuffleHandle
 
-  /** Get a writer for a given partition. Called on executors by map tasks. */
-  def getWriter[K, V](handle: ShuffleHandle, mapId: Int, context: TaskContext): ShuffleWriter[K, V]
+  /** Get a writer for a given partition. Called on executors by map tasks. add serializer.by yaoz*/
+  def getWriter[K, V](handle: ShuffleHandle, mapId: Int, context: TaskContext, serializer: Serializer): ShuffleWriter[K, V]
 
   /**
    * Get a reader for a range of reduce partitions (startPartition to endPartition-1, inclusive).

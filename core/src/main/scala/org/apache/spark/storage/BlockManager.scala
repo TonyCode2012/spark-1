@@ -90,6 +90,9 @@ private[spark] class BlockManager(
     new ExternalBlockStore(this, executorId)
   }
 
+  // BlockId to serializer mapping.by yaoz
+  private[spark] var blockIdToSerializer = new HashMap[BlockId, Serializer]
+
   private[spark]
   val externalShuffleServiceEnabled = conf.getBoolean("spark.shuffle.service.enabled", false)
 
@@ -207,8 +210,20 @@ private[spark] class BlockManager(
     }
   }
 
+  /** Add serializer.by yaoz*/
+  def addSerByBId(blockId: BlockId, serializer: Serializer): Unit ={
+    if(!blockIdToSerializer.contains(blockId)){
+      blockIdToSerializer(blockId) = serializer
+    }
+  }
+
+  /** Get serializer.by yaoz*/
+  def getSerByBId(blockId: BlockId): Serializer ={
+    if(!blockIdToSerializer.contains(blockId)) SparkEnv.get.serializer else blockIdToSerializer(blockId)
+  }
+
   /** set defualt serializer.by yaoz*/
-  def setDefualtSerializer(serializer: Serializer): Unit ={
+  def setDefaultSerializer(serializer: Serializer): Unit ={
     defaultSerializer = serializer
   }
 

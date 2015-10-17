@@ -18,6 +18,7 @@
 package org.apache.spark.shuffle.hash
 
 import org.apache.spark._
+import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle._
 
 /**
@@ -56,7 +57,7 @@ private[spark] class HashShuffleManager(conf: SparkConf) extends ShuffleManager 
   }
 
   /** Get a writer for a given partition. Called on executors by map tasks. */
-  override def getWriter[K, V](handle: ShuffleHandle, mapId: Int, context: TaskContext)
+  override def getWriter[K, V](handle: ShuffleHandle, mapId: Int, context: TaskContext, serializer: Serializer = SparkEnv.get.serializer)
       : ShuffleWriter[K, V] = {
     new HashShuffleWriter(
       shuffleBlockResolver, handle.asInstanceOf[BaseShuffleHandle[K, V, _]], mapId, context)

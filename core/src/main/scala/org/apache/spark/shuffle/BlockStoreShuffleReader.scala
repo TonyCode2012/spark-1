@@ -49,23 +49,23 @@ private[spark] class BlockStoreShuffleReader[K, C](
       SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024)
 
     // Wrap the streams for compression based on configuration
-    val wrappedStreams = blockFetcherItr.map { case (blockId, inputStream) =>
-      blockManager.wrapForCompression(blockId, inputStream)
+    val pairWrappedStreams = blockFetcherItr.map { case (blockId, inputStream) =>
+      logInfo(s"type of blockId is ${blockId.getClass}")
+      (blockId, blockManager.wrapForCompression(blockId, inputStream))
     }
 
     val ser = Serializer.getSerializer(dep.serializer)
     val serializerInstance = ser.newInstance()
 
     // Create a key/value iterator for each stream
-    var partitionIndex = startPartition.toLong
-    val recordIter = wrappedStreams.flatMap { wrappedStream =>
+    val recordIter = pairWrappedStreams.flatMap { case (blockId, wrappedStream) =>
       // Note: the asKeyValueIterator below wraps a key/value iterator inside of a
       // NextIterator. The NextIterator makes sure that close() is called on the
       // underlying InputStream when all records have been read.
-      //val ser = dep.rdd.getSerializer(partitionIndex)
-      //val serializerInstance = ser.newInstance()
-      //partitionIndex += 1
-      serializerInstance.deserializeStream(wrappedStream).asKeyValueIterator
+      // get actual serializer from blockManager.by yaoz
+      val actualSer = blockManager.getSerializer(blockId)
+      val actualSerializerInstance = actualSer.newInstance()
+      actualSerializerInstance.deserializeStream(wrappedStream).asKeyValueIterator
     }
 
     // Update the context task metrics for each record read.
@@ -102,7 +102,6 @@ private[spark] class BlockStoreShuffleReader[K, C](
       case Some(keyOrd: Ordering[K]) =>
         // Create an ExternalSorter to sort the data. Note that if spark.shuffle.spill is disabled,
         // the ExternalSorter won't spill to disk.
-        //val ser = Serializer.getSerializer(dep.serializer)
         val sorter = new ExternalSorter[K, C, C](ordering = Some(keyOrd), serializer = Some(ser))
         sorter.insertAll(aggregatedIter)
         context.taskMetrics().incMemoryBytesSpilled(sorter.memoryBytesSpilled)

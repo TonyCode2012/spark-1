@@ -1,6 +1,7 @@
 package org.apache.spark.adaptive
 
 import org.apache.spark._
+import org.apache.spark.executor.Executor
 import org.apache.spark.Logging
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.util.Utils
@@ -9,7 +10,8 @@ import org.apache.spark.util.Utils
  * Created by spark on 15-9-27.
  */
 class StrategyDecision(
-    env: SparkEnv)
+    env: SparkEnv,
+    executor: Executor)
   extends Logging{
 
   //get env
@@ -21,7 +23,7 @@ class StrategyDecision(
   def changeSerializer(serializerName: String): Unit ={
     conf.set("spark.serializer",serializerName)
     val defaultClassName = "org.apache.spark.serializer.JavaSerializer"
-    env.serializer = instantiateClass[Serializer](conf.
+    executor._resultSer = instantiateClass[Serializer](conf.
       get("spark.serializer", defaultClassName))
     logInfo(s"change serializer to ${serializerName}")
   }

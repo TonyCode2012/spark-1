@@ -29,6 +29,7 @@ import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.unsafe.memory.TaskMemoryManager
 import org.apache.spark.util.ByteBufferInputStream
 import org.apache.spark.util.Utils
+import org.apache.spark.serializer.Serializer
 
 
 /**
@@ -55,6 +56,17 @@ private[spark] abstract class Task[T](
    * local value.
    */
   type AccumulatorUpdates = Map[Long, Any]
+
+  /** TaskId to serializer.by yaoz*/
+  private[spark] val taskIdToSerializer = new HashMap[Int, Serializer]
+
+  /** Get serializer by taskId.by yaoz*/
+  def getSerializer(taskId: Int): Serializer = {
+    if(taskIdToSerializer.contains(taskId)) taskIdToSerializer(taskId)
+    else{
+      SparkEnv.get.serializer
+    }
+  }
 
   /**
    * Called by [[Executor]] to run this task.

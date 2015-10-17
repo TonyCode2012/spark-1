@@ -19,7 +19,8 @@ package org.apache.spark.shuffle.sort
 
 import java.util.concurrent.ConcurrentHashMap
 
-import org.apache.spark.{Logging, SparkConf, TaskContext, ShuffleDependency}
+import org.apache.spark._
+import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle._
 
 private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager with Logging {
@@ -58,7 +59,11 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
   }
 
   /** Get a writer for a given partition. Called on executors by map tasks. */
-  override def getWriter[K, V](handle: ShuffleHandle, mapId: Int, context: TaskContext)
+  override def getWriter[K, V](
+      handle: ShuffleHandle,
+      mapId: Int,
+      context: TaskContext,
+      serializer: Serializer = SparkEnv.get.serializer)
       : ShuffleWriter[K, V] = {
     val baseShuffleHandle = handle.asInstanceOf[BaseShuffleHandle[K, V, _]]
     shuffleMapNumber.putIfAbsent(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps)

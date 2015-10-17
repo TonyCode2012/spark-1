@@ -29,7 +29,8 @@ private[spark] class SortShuffleWriter[K, V, C](
     shuffleBlockResolver: IndexShuffleBlockResolver,
     handle: BaseShuffleHandle[K, V, C],
     mapId: Int,
-    context: TaskContext)
+    context: TaskContext,
+    serializer:  Serializer = SparkEnv.get.serializer)
   extends ShuffleWriter[K, V] with Logging {
 
   private val dep = handle.dependency
@@ -48,12 +49,16 @@ private[spark] class SortShuffleWriter[K, V, C](
   private val writeMetrics = new ShuffleWriteMetrics()
   context.taskMetrics.shuffleWriteMetrics = Some(writeMetrics)
 
-  /** Write a bunch of records to this task's output */
+  /** Write a bunch of records to this task's output
+    *
+    * Change dep.serializer to Option[Serializer](serializer).by yaoz
+    */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
+    val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)
     sorter = if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
       new ExternalSorter[K, V, C](
-        dep.aggregator, Some(dep.partitioner), dep.keyOrdering, dep.serializer)
+        dep.aggregator, Some(dep.partitioner), dep.keyOrdering, Option[Serializer](serializer))
     } else if (SortShuffleWriter.shouldBypassMergeSort(
         SparkEnv.get.conf, dep.partitioner.numPartitions, aggregator = None, keyOrdering = None)) {
       // If there are fewer than spark.shuffle.sort.bypassMergeThreshold partitions and we don't
@@ -62,13 +67,13 @@ private[spark] class SortShuffleWriter[K, V, C](
       // together the spilled files, which would happen with the normal code path. The downside is
       // having multiple files open at a time and thus more memory allocated to buffers.
       new BypassMergeSortShuffleWriter[K, V](SparkEnv.get.conf, blockManager, dep.partitioner,
-        writeMetrics, Serializer.getSerializer(dep.serializer))
+        writeMetrics, Serializer.getSerializer(Option[Serializer](serializer)))
     } else {
       // In this case we pass neither an aggregator nor an ordering to the sorter, because we don't
       // care whether the keys get sorted in each partition; that will be done on the reduce side
       // if the operation being run is sortByKey.
       new ExternalSorter[K, V, V](
-        aggregator = None, Some(dep.partitioner), ordering = None, dep.serializer)
+        aggregator = None, Some(dep.partitioner), ordering = None, Option[Serializer](serializer))
     }
     sorter.insertAll(records)
 
@@ -76,7 +81,6 @@ private[spark] class SortShuffleWriter[K, V, C](
     // because it just opens a single file, so is typically too fast to measure accurately
     // (see SPARK-3570).
     val outputFile = shuffleBlockResolver.getDataFile(dep.shuffleId, mapId)
-    val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)
     val partitionLengths = sorter.writePartitionedFile(blockId, context, outputFile)
     shuffleBlockResolver.writeIndexFile(dep.shuffleId, mapId, partitionLengths)
 

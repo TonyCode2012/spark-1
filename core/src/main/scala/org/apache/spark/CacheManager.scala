@@ -22,6 +22,7 @@ import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage._
+import org.apache.spark.serializer.Serializer
 
 /**
  * Spark class responsible for passing RDDs partition contents to the BlockManager and making
@@ -43,8 +44,8 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
     logDebug(s"Looking for partition $key")
     blockManager.get(key) match {
       case Some(blockResult) =>
-        //set blockManager serializer
-        blockManager.setDefualtSerializer(rdd.getSerializer(partition.index.toLong))
+        // Set corresponding serializer to RDD.by yaoz
+        blockManager.getSerializer(key)
         // Partition is already materialized, so just return its values
         val existingMetrics = context.taskMetrics
           .getInputMetricsForReadMethod(blockResult.readMethod)
@@ -77,7 +78,8 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
 
           // Otherwise, cache the values and keep track of any updates in block statuses
           val updatedBlocks = new ArrayBuffer[(BlockId, BlockStatus)]
-          val cachedValues = putInBlockManager(key, computedValues, storageLevel, updatedBlocks)
+          // send corresponding serializer to blockManager.by yaoz
+          val cachedValues = putInBlockManager(key, computedValues, storageLevel, updatedBlocks, rdd.getSerializer(partition.index))
           val metrics = context.taskMetrics
           val lastUpdatedBlocks = metrics.updatedBlocks.getOrElse(Seq[(BlockId, BlockStatus)]())
           metrics.updatedBlocks = Some(lastUpdatedBlocks ++ updatedBlocks.toSeq)
@@ -137,12 +139,15 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
    * behavior, not the level originally specified by the user. This is mainly for forcing a
    * MEMORY_AND_DISK partition to disk if there is not enough room to unroll the partition,
    * while preserving the the original semantics of the RDD as specified by the application.
+   *
+   * put corresponding partition's serializer to blockManager.by yaoz
    */
   private def putInBlockManager[T](
       key: BlockId,
       values: Iterator[T],
       level: StorageLevel,
       updatedBlocks: ArrayBuffer[(BlockId, BlockStatus)],
+      serializer: Serializer,
       effectiveStorageLevel: Option[StorageLevel] = None): Iterator[T] = {
 
     val putLevel = effectiveStorageLevel.getOrElse(level)
@@ -169,7 +174,10 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
        * Otherwise, we may cause an OOM exception if the JVM does not have enough space for this
        * single partition. Instead, we unroll the values cautiously, potentially aborting and
        * dropping the partition to disk if applicable.
+       *
+       * put corresponding partition's serializer to blockManager.by yaoz
        */
+      blockManager.addSerializer(key, serializer)
       blockManager.memoryStore.unrollSafely(key, values, updatedBlocks) match {
         case Left(arr) =>
           // We have successfully unrolled the entire partition, so cache it in memory
@@ -183,7 +191,7 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
             logWarning(s"Persisting partition $key to disk instead.")
             val diskOnlyLevel = StorageLevel(useDisk = true, useMemory = false,
               useOffHeap = false, deserialized = false, putLevel.replication)
-            putInBlockManager[T](key, returnValues, level, updatedBlocks, Some(diskOnlyLevel))
+            putInBlockManager[T](key, returnValues, level, updatedBlocks, serializer, Some(diskOnlyLevel))
           } else {
             returnValues
           }

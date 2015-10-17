@@ -138,18 +138,18 @@ abstract class RDD[T: ClassTag](
   // =======================================================================
 
   /** partition to responding serializer.by yaoz*/
-  val partitionIdToSerId = new HashMap[Long,Int]
+  val partitionIdToSerId = new HashMap[Int,Int]
 
   /** serializer map.by yaoz*/
   val serializerMap = new HashMap[Int,Serializer]
 
   /** get serializer by id.by yaoz*/
-  def getSerializer(taskId: Long): Serializer = {
-    if(!partitionIdToSerId.contains(taskId)){
+  def getSerializer(partitionId: Int): Serializer = {
+    if(!partitionIdToSerId.contains(partitionId)){
       throw new NoSuchElementException(
         "there is something wrong when add serializer !")
     }
-    val serId = partitionIdToSerId(taskId)
+    val serId = partitionIdToSerId(partitionId)
     if(!serializerMap.contains(serId)){
       throw new NoSuchElementException(
         "Something wrong with adding serializer to map")
@@ -158,9 +158,9 @@ abstract class RDD[T: ClassTag](
   }
 
   /** add KryoSerializer.by yaoz*/
-  def addSerializer(taskId: Long, serializer: KryoSerializer): Unit ={
+  def addSerializer(partitionId: Int, serializer: KryoSerializer): Unit ={
     val serId = serializer.getClass.getName.hashCode()
-    partitionIdToSerId(taskId) = serId
+    partitionIdToSerId(partitionId) = serId
     //if not cache this serializer, put it to serializerMap
     if(!serializerMap.contains(serId)){
       serializerMap(serId) = serializer
@@ -168,9 +168,9 @@ abstract class RDD[T: ClassTag](
   }
 
   /** add JavaSerializer.by yaoz*/
-  def addSerializer(taskId: Long, serializer: JavaSerializer): Unit ={
+  def addSerializer(partitionId: Int, serializer: JavaSerializer): Unit ={
     val serId = serializer.getClass.getName.hashCode()
-    partitionIdToSerId(taskId) = serId
+    partitionIdToSerId(partitionId) = serId
     //if not cache this serializer, put it to serializerMap
     if(!serializerMap.contains(serId)){
       serializerMap(serId) = serializer
@@ -212,6 +212,13 @@ abstract class RDD[T: ClassTag](
     }
     storageLevel = newLevel
     this
+  }
+
+  /**
+   * judge current rdd is persisted
+   * */
+  def isPersisted(rddId: Int): Boolean = {
+    sc.persistentRdds.contains(rddId)
   }
 
   /**

@@ -155,12 +155,6 @@ class DAGScheduler(
   private[scheduler] val activeJobs = new HashSet[ActiveJob]
 
   /**
-   * The collectData deamon thread to run. This will be running when a task starts.
-   * Once it is set, it will never be changed.by yaoz
-   */
-  @volatile var collectDataDeamonTask = new Thread(new CollectData(env))
-
-  /**
    * Contains the locations that each RDD's partitions are cached on.  This map's keys are RDD ids
    * and its values are arrays indexed by partition numbers. Each array value is the set of
    * locations where that RDD partition is cached.
@@ -866,12 +860,6 @@ class DAGScheduler(
     val stageInfos = stageIds.flatMap(id => stageIdToStage.get(id).map(_.latestInfo))
     listenerBus.post(
       SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos, properties))
-
-    /** when job starts,start collecting data.by yaoz*/
-    if(!CollectData.isStarted){
-    //  collectDataDeamonTask.run()
-    //  collectData.isStarted = true
-    }
 
     submitStage(finalStage)
 
@@ -1599,8 +1587,6 @@ class DAGScheduler(
     messageScheduler.shutdownNow()
     eventProcessLoop.stop()
     taskScheduler.stop()
-    //when this job finished,stop collecting data.by yaoz
-    collectDataDeamonTask.stop()
   }
 
   // Start the event thread and register the metrics source at the end of the constructor

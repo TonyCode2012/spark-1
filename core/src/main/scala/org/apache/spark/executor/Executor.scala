@@ -75,6 +75,12 @@ private[spark] class Executor(
 
   private val conf = env.conf
 
+  /** Get blockManager.by yaoz*/
+  private val blockManager = env.blockManager
+
+  // Define current used serializer.by yaoz
+  var _resultSer = env.serializer
+
   // No ip or host:port - just hostname
   Utils.checkHost(executorHostname, "Expected executed slave to be a hostname")
   // must not have port specified.
@@ -125,7 +131,7 @@ private[spark] class Executor(
   private val runningTasks = new ConcurrentHashMap[Long, TaskRunner]
 
   //collect data deamon thread.by yaoz
-  private val collectDataDeamon = new CollectData(env)
+  private val collectDataDeamon = new CollectData(env,this)
 
   // Executor for the heartbeat task.
   private val heartbeater = ThreadUtils.newDaemonSingleThreadScheduledExecutor("driver-heartbeater")
@@ -218,7 +224,6 @@ private[spark] class Executor(
         updateDependencies(taskFiles, taskJars)
         task = ser.deserialize[Task[Any]](taskBytes, Thread.currentThread.getContextClassLoader)
         task.setTaskMemoryManager(taskMemoryManager)
-        val taskClass = taskBytes.getClass //by yaoz
 
         // If this task has been killed before we deserialized it, let's quit now. Otherwise,
         // continue executing the task.
@@ -261,13 +266,10 @@ private[spark] class Executor(
           throw new TaskKilledException
         }
 
-        val resultSer = env.serializer.newInstance()
-        //if adaptively use kryo serializer,register this class
-        var valueClass = resultSer.getClass.toString
-        valueClass = valueClass.substring(valueClass.indexOf(" ")+1,valueClass.length)
+        // Create a serializer instance and register it to corresponding RDD.by yaoz
+        val resultSerializer = _resultSer
+        val resultSer = _resultSer.newInstance()
         conf.registerKryoClasses(Array(value.getClass))
-        //if(valueClass.indexOf("org.apache.spark.serializer.KryoSerializer") != -1){
-        //}
         //set this partition serializer
         val methodGetScheduler = execBackend.getClass.getMethod("getScheduler")
         val scheduler = methodGetScheduler.invoke(execBackend)
@@ -278,8 +280,9 @@ private[spark] class Executor(
         val methodGetRDD = stage.getClass.getMethod("getRDD")
         val rdd = methodGetRDD.invoke(stage)
         val methodAddSerializer = rdd.getClass.getMethod(
-          "addSerializer",taskId.getClass,env.serializer.getClass)
-        methodAddSerializer.invoke(rdd,taskId:java.lang.Long,env.serializer)
+          "addSerializer",task.partitionId.getClass,resultSerializer.getClass)
+        methodAddSerializer.invoke(rdd,task.partitionId: java.lang.Integer,resultSerializer)
+        // Get serialization time.by yaoz
         val beforeSerialization = System.currentTimeMillis()
         val valueBytes = resultSer.serialize(value)
         val afterSerialization = System.currentTimeMillis()
@@ -310,10 +313,8 @@ private[spark] class Executor(
 
         //get directResult serialization time.by yaoz
         val directResult = new DirectTaskResult(valueBytes, accumUpdates, task.metrics.orNull)
-        val tmp = directResult.toString.getBytes().length
         val beforeSerializeDirectResult = System.currentTimeMillis()
         val serializedDirectResult = ser.serialize(directResult)
-        val tmp2 = serializedDirectResult.toString.getBytes().length
         val afterSerializeDirectResult = System.currentTimeMillis()
         collectDataDeamon.baseDirectResSerTimeByByte =
           afterSerializeDirectResult - beforeSerializeDirectResult

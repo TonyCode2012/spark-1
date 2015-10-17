@@ -287,8 +287,8 @@ object SparkEnv extends Logging {
 
     //change serializer from val to var.by yaoz
     val serializer = instantiateClassFromConf[Serializer](
-      //"spark.serializer","org.apache.spark.serializer.JavaSerializer")
-    "spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+      "spark.serializer","org.apache.spark.serializer.JavaSerializer")
+    //"spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     logDebug(s"Using serializer: ${serializer.getClass}")
 
     val closureSerializer = instantiateClassFromConf[Serializer](
