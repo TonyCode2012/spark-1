@@ -93,6 +93,9 @@ private[spark] class BlockManager(
   // BlockId to serializer mapping.by yaoz
   private[spark] var blockIdToSerializer = new HashMap[BlockId, Serializer]
 
+  // RDD ID to serializer mapping .by yaoz
+  private[spark] var rddTaskIdToSer = new HashMap[String, Serializer]
+
   private[spark]
   val externalShuffleServiceEnabled = conf.getBoolean("spark.shuffle.service.enabled", false)
 
@@ -208,6 +211,18 @@ private[spark] class BlockManager(
     if (externalShuffleServiceEnabled && !blockManagerId.isDriver) {
       registerWithExternalShuffleServer()
     }
+  }
+
+  /** Add serializer through RDDId.by yaoz*/
+  def addSerByRDDTaskId(id: String, serializer: Serializer): Unit ={
+    if(!rddTaskIdToSer.contains(id)){
+      rddTaskIdToSer(id) = serializer
+    }
+  }
+
+  /** Get serializer through RDDId.by yaoz*/
+  def getSerByRDDTaskId(id: String): Serializer = {
+    if(!rddTaskIdToSer.contains(id)) SparkEnv.get.serializer else rddTaskIdToSer(id)
   }
 
   /** Add serializer.by yaoz*/

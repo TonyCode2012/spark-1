@@ -63,7 +63,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
       // NextIterator. The NextIterator makes sure that close() is called on the
       // underlying InputStream when all records have been read.
       // get actual serializer from blockManager.by yaoz
-      val actualSer = blockManager.getSerializer(blockId)
+      val actualSer = blockManager.getSerByBId(blockId)
       val actualSerializerInstance = actualSer.newInstance()
       actualSerializerInstance.deserializeStream(wrappedStream).asKeyValueIterator
     }

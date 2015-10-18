@@ -54,11 +54,15 @@ private[spark] class SortShuffleWriter[K, V, C](
     * Change dep.serializer to Option[Serializer](serializer).by yaoz
     */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
-    val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)
+    // Get actualSerializer.by yaoz
+    var actualSer: Option[Serializer] = Option[Serializer](SparkEnv.get.serializer)
+    if(dep.rdd != null) {
+      actualSer = Option[Serializer](blockManager.getSerByRDDTaskId(dep.rdd.id.toString + "_" + context.partitionId().toString))
+    }
     sorter = if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
       new ExternalSorter[K, V, C](
-        dep.aggregator, Some(dep.partitioner), dep.keyOrdering, Option[Serializer](serializer))
+        dep.aggregator, Some(dep.partitioner), dep.keyOrdering, actualSer)
     } else if (SortShuffleWriter.shouldBypassMergeSort(
         SparkEnv.get.conf, dep.partitioner.numPartitions, aggregator = None, keyOrdering = None)) {
       // If there are fewer than spark.shuffle.sort.bypassMergeThreshold partitions and we don't
@@ -67,13 +71,13 @@ private[spark] class SortShuffleWriter[K, V, C](
       // together the spilled files, which would happen with the normal code path. The downside is
       // having multiple files open at a time and thus more memory allocated to buffers.
       new BypassMergeSortShuffleWriter[K, V](SparkEnv.get.conf, blockManager, dep.partitioner,
-        writeMetrics, Serializer.getSerializer(Option[Serializer](serializer)))
+        writeMetrics, Serializer.getSerializer(actualSer))
     } else {
       // In this case we pass neither an aggregator nor an ordering to the sorter, because we don't
       // care whether the keys get sorted in each partition; that will be done on the reduce side
       // if the operation being run is sortByKey.
       new ExternalSorter[K, V, V](
-        aggregator = None, Some(dep.partitioner), ordering = None, Option[Serializer](serializer))
+        aggregator = None, Some(dep.partitioner), ordering = None, actualSer)
     }
     sorter.insertAll(records)
 
@@ -81,8 +85,12 @@ private[spark] class SortShuffleWriter[K, V, C](
     // because it just opens a single file, so is typically too fast to measure accurately
     // (see SPARK-3570).
     val outputFile = shuffleBlockResolver.getDataFile(dep.shuffleId, mapId)
+    val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)
     val partitionLengths = sorter.writePartitionedFile(blockId, context, outputFile)
     shuffleBlockResolver.writeIndexFile(dep.shuffleId, mapId, partitionLengths)
+
+    // Add actualSerializer to blockManager blockIdToSerializer map.by yaoz
+    blockManager.addSerByBId(blockId, actualSer.get)
 
     mapStatus = MapStatus(blockManager.shuffleServerId, partitionLengths)
   }

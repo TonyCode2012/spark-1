@@ -45,7 +45,7 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
     blockManager.get(key) match {
       case Some(blockResult) =>
         // Set corresponding serializer to RDD.by yaoz
-        blockManager.getSerializer(key)
+        blockManager.getSerByBId(key)
         // Partition is already materialized, so just return its values
         val existingMetrics = context.taskMetrics
           .getInputMetricsForReadMethod(blockResult.readMethod)
@@ -79,7 +79,7 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
           // Otherwise, cache the values and keep track of any updates in block statuses
           val updatedBlocks = new ArrayBuffer[(BlockId, BlockStatus)]
           // send corresponding serializer to blockManager.by yaoz
-          val cachedValues = putInBlockManager(key, computedValues, storageLevel, updatedBlocks, rdd.getSerializer(partition.index))
+          val cachedValues = putInBlockManager(key, computedValues, storageLevel, updatedBlocks, blockManager.getSerByBId(key))
           val metrics = context.taskMetrics
           val lastUpdatedBlocks = metrics.updatedBlocks.getOrElse(Seq[(BlockId, BlockStatus)]())
           metrics.updatedBlocks = Some(lastUpdatedBlocks ++ updatedBlocks.toSeq)
@@ -177,7 +177,7 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
        *
        * put corresponding partition's serializer to blockManager.by yaoz
        */
-      blockManager.addSerializer(key, serializer)
+      blockManager.addSerByBId(key, serializer)
       blockManager.memoryStore.unrollSafely(key, values, updatedBlocks) match {
         case Left(arr) =>
           // We have successfully unrolled the entire partition, so cache it in memory

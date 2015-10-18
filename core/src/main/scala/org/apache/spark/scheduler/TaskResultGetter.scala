@@ -38,6 +38,9 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
   private val getTaskResultExecutor = ThreadUtils.newDaemonFixedThreadPool(
     THREADS, "task-result-getter")
 
+  // Get blockManager.by yaoz
+  val blockManager = SparkEnv.get.blockManager
+
   protected val serializer = new ThreadLocal[SerializerInstance] {
     override def initialValue(): SerializerInstance = {
       sparkEnv.closureSerializer.newInstance()
@@ -57,6 +60,10 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
               // deserialize "value" without holding any lock so that it won't block other threads.
               // We should call it here, so that when it's called again in
               // "TaskSetManager.handleSuccessfulTask", it does not need to deserialize the value.
+              // Set directResult serializer to correct one.by yaoz
+              val RDDId = scheduler.getDAGScheduler.getStage(taskSetManager.stageId).rdd.id
+              val actualSer = blockManager.getSerByRDDTaskId(RDDId.toString + "_" + tid.toString)
+              directResult.setSerializer(actualSer)
               directResult.value()
               (directResult, serializedData.limit())
             case IndirectTaskResult(blockId, size) =>

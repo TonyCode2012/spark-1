@@ -27,6 +27,7 @@ import org.apache.spark.SparkEnv
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.storage.BlockId
 import org.apache.spark.util.Utils
+import org.apache.spark.serializer.Serializer
 
 // Task result. Also contains updates to accumulator variables.
 private[spark] sealed trait TaskResult[T]
@@ -43,6 +44,14 @@ class DirectTaskResult[T](var valueBytes: ByteBuffer, var accumUpdates: Map[Long
 
   private var valueObjectDeserialized = false
   private var valueObject: T = _
+
+  // serializer used to serialize directResult.by yaoz
+  private var _serializer: Serializer = SparkEnv.get.serializer
+
+  /** Set serializer.by yaoz*/
+  def setSerializer(serializer: Serializer): Unit ={
+    _serializer = serializer
+  }
 
   def this() = this(null.asInstanceOf[ByteBuffer], null, null)
 
@@ -93,7 +102,8 @@ class DirectTaskResult[T](var valueBytes: ByteBuffer, var accumUpdates: Map[Long
     } else {
       // This should not run when holding a lock because it may cost dozens of seconds for a large
       // value.
-      val resultSer = SparkEnv.get.serializer.newInstance()
+      // use current serializer instead of SparkEnv.get.serializer.newInstance().by yaoz
+      val resultSer = _serializer.newInstance()
       valueObject = resultSer.deserialize(valueBytes)
       valueObjectDeserialized = true
       valueObject

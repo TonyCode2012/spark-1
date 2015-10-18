@@ -282,6 +282,9 @@ private[spark] class Executor(
         val methodAddSerializer = rdd.getClass.getMethod(
           "addSerializer",task.partitionId.getClass,resultSerializer.getClass)
         methodAddSerializer.invoke(rdd,task.partitionId: java.lang.Integer,resultSerializer)
+        val methodGetRDDId = rdd.getClass.getMethod("getId")
+        val RDDId: Int = methodGetRDDId.invoke(rdd).toString.toInt
+        blockManager.addSerByRDDTaskId(RDDId.toString + "_" + taskId.toString, resultSerializer)
         // Get serialization time.by yaoz
         val beforeSerialization = System.currentTimeMillis()
         val valueBytes = resultSer.serialize(value)
@@ -316,6 +319,8 @@ private[spark] class Executor(
         val beforeSerializeDirectResult = System.currentTimeMillis()
         val serializedDirectResult = ser.serialize(directResult)
         val afterSerializeDirectResult = System.currentTimeMillis()
+        // Set directResult serializer to current serializer.by yaoz
+        directResult.setSerializer(resultSerializer)
         collectDataDeamon.baseDirectResSerTimeByByte =
           afterSerializeDirectResult - beforeSerializeDirectResult
         val resultSize = serializedDirectResult.limit
