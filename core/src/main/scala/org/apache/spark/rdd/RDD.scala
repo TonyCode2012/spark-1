@@ -136,7 +136,7 @@ abstract class RDD[T: ClassTag](
   // =======================================================================
   // Methods and fields available on all RDDs
   // =======================================================================
-
+/*
   /** partition to responding serializer.by yaoz*/
   val partitionIdToSerId = new HashMap[Int,Int]
 
@@ -175,6 +175,19 @@ abstract class RDD[T: ClassTag](
     if(!serializerMap.contains(serId)){
       serializerMap(serId) = serializer
     }
+  }*/
+
+  /** RDD size.by yaoz*/
+  private[spark] var RDDSize: Double = 0
+
+  /** Get RDD size.by yaoz*/
+  def getRDDSize: Double = {
+    RDDSize
+  }
+
+  /** Set RDD size.by yaoz*/
+  def addRDDSize(size: Double): Unit ={
+    RDDSize += size
   }
 
   /** The SparkContext that created this RDD. */

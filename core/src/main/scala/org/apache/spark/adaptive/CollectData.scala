@@ -42,9 +42,9 @@ private[spark] class CollectData(
 
   //memory threshold
   private[spark] val memoyUpperThreshold =
-      conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5) - 0.2
+      conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5) - 0.1
   private[spark] val memoryLowerThreshold =
-    conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5) - 0.3
+    conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5) - 0.2
 
   //if jvm heap volume reaches indicated threshold,try to adopt KryoSerializer
   private[spark] var adoptKryoSerializer: Boolean = false
@@ -74,6 +74,8 @@ private[spark] class CollectData(
       logInfo(s"NON-HEAP MEMORY USAGE:${memorymbean.getNonHeapMemoryUsage}")
 
       val currentTime = System.currentTimeMillis
+      val cachedDataSize = env.getPersistedRDDSize * 8
+      val cachedMemFraction = cachedDataSize.toDouble / heapMemMax.toDouble
       val memoryUsageFraction = heapMemUsage.toDouble / heapMemMax.toDouble
       memoryData(currentTime) = memoryUsageFraction
 
@@ -111,7 +113,7 @@ private[spark] class CollectData(
       //====================get I/O information====================//
 
       /** when memory usage reaches threshold change storage strategy.*/
-      if(memoryUsageFraction > memoyUpperThreshold && !adoptKryoSerializer){
+      if(cachedMemFraction > memoyUpperThreshold && !adoptKryoSerializer){
         conKryoSerializer += 1
         if(proKryoSerializer > 0) {
           proKryoSerializer -= 1
@@ -121,7 +123,7 @@ private[spark] class CollectData(
           strategyDecision.changeSerializer(serializerCur)
           conKryoSerializer = 0
         }
-      } else if(memoryUsageFraction < memoryLowerThreshold && adoptKryoSerializer){
+      } else if(cachedMemFraction < memoryLowerThreshold && adoptKryoSerializer){
         proKryoSerializer += 1
         if(conKryoSerializer > 0) {
           conKryoSerializer -= 1
@@ -144,7 +146,7 @@ private[spark] class CollectData(
       try {
         Thread.sleep(sleepTimeout)
       }catch {
-        case t: Throwable=>
+        case t: InterruptedException=>
           logError(s"invoking sleep occurs problem,info is ${t.getMessage}")
       }
     }

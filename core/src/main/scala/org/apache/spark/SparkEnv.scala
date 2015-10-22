@@ -88,6 +88,19 @@ class SparkEnv (
 
   private var driverTmpDirToDelete: Option[String] = None
 
+  /** Get persisted RDD size.by yaoz*/
+  private[spark] var persistedRDDSize: Double = _
+
+  /** Get persisted RDD size.by yaoz*/
+  def getPersistedRDDSize: Double = {
+    persistedRDDSize
+  }
+
+  /** Set persisted RDD size.by yaoz*/
+  def setPersistedRDDsize(size: Double): Unit ={
+    persistedRDDSize = size
+  }
+
   private[spark] def stop() {
 
     if (!isStopped) {

@@ -1601,11 +1601,23 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
     dagScheduler.getPreferredLocs(rdd, partition)
   }
 
+  /** Update persisted RDD size.by yaoz*/
+  private[spark] var cachedRDDSize: Double = 0
+
+  /** update sparkenv persisted rdd info.by yaoz*/
+  private[spark] def updatePersistedInfo {
+    _env.setPersistedRDDsize(cachedRDDSize)
+  }
+
   /**
    * Register an RDD to be persisted in memory and/or disk storage
    */
   private[spark] def persistRDD(rdd: RDD[_]) {
     persistentRdds(rdd.id) = rdd
+    if(rdd != null) {
+      cachedRDDSize += rdd.getRDDSize
+    }
+    updatePersistedInfo
   }
 
   /**
@@ -1613,8 +1625,13 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
    */
   private[spark] def unpersistRDD(rddId: Int, blocking: Boolean = true) {
     env.blockManager.master.removeRdd(rddId, blocking)
+    val rdd = persistentRdds(rddId)
+    if(rdd != null) {
+      cachedRDDSize -= rdd.getRDDSize
+    }
     persistentRdds.remove(rddId)
     listenerBus.post(SparkListenerUnpersistRDD(rddId))
+    updatePersistedInfo
   }
 
   /**
@@ -2189,6 +2206,8 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
   /** Called by MetadataCleaner to clean up the persistentRdds map periodically */
   private[spark] def cleanup(cleanupTime: Long) {
     persistentRdds.clearOldValues(cleanupTime)
+    cachedRDDSize = 0
+    updatePersistedInfo
   }
 
   // In order to prevent multiple SparkContexts from being active at the same time, mark this

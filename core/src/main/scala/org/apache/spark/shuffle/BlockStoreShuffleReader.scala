@@ -50,7 +50,6 @@ private[spark] class BlockStoreShuffleReader[K, C](
 
     // Wrap the streams for compression based on configuration
     val pairWrappedStreams = blockFetcherItr.map { case (blockId, inputStream) =>
-      logInfo(s"type of blockId is ${blockId.getClass}")
       (blockId, blockManager.wrapForCompression(blockId, inputStream))
     }
 

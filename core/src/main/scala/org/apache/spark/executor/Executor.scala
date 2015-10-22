@@ -279,9 +279,9 @@ private[spark] class Executor(
         val stage = methodGetStage.invoke(dagScheduler,task.stageId:java.lang.Integer)
         val methodGetRDD = stage.getClass.getMethod("getRDD")
         val rdd = methodGetRDD.invoke(stage)
-        val methodAddSerializer = rdd.getClass.getMethod(
+        /*val methodAddSerializer = rdd.getClass.getMethod(
           "addSerializer",task.partitionId.getClass,resultSerializer.getClass)
-        methodAddSerializer.invoke(rdd,task.partitionId: java.lang.Integer,resultSerializer)
+        methodAddSerializer.invoke(rdd,task.partitionId: java.lang.Integer,resultSerializer)*/
         val methodGetRDDId = rdd.getClass.getMethod("getId")
         val RDDId: Int = methodGetRDDId.invoke(rdd).toString.toInt
         blockManager.addSerByRDDTaskId(RDDId.toString + "_" + taskId.toString, resultSerializer)
@@ -344,6 +344,11 @@ private[spark] class Executor(
             serializedDirectResult
           }
         }
+
+        // Set RDD size.by yaoz
+        val serializedResultSize = serializedResult.toString.size.toDouble
+        val methodAddRDDSize = rdd.getClass.getMethod("addRDDSize", serializedResultSize.getClass)
+        methodAddRDDSize.invoke(rdd, serializedResultSize: java.lang.Double)
 
         execBackend.statusUpdate(taskId, TaskState.FINISHED, serializedResult)
 
