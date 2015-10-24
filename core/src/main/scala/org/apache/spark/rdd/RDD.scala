@@ -136,46 +136,6 @@ abstract class RDD[T: ClassTag](
   // =======================================================================
   // Methods and fields available on all RDDs
   // =======================================================================
-/*
-  /** partition to responding serializer.by yaoz*/
-  val partitionIdToSerId = new HashMap[Int,Int]
-
-  /** serializer map.by yaoz*/
-  val serializerMap = new HashMap[Int,Serializer]
-
-  /** get serializer by id.by yaoz*/
-  def getSerializer(partitionId: Int): Serializer = {
-    if(!partitionIdToSerId.contains(partitionId)){
-      throw new NoSuchElementException(
-        "there is something wrong when add serializer !")
-    }
-    val serId = partitionIdToSerId(partitionId)
-    if(!serializerMap.contains(serId)){
-      throw new NoSuchElementException(
-        "Something wrong with adding serializer to map")
-    }
-    serializerMap(serId)
-  }
-
-  /** add KryoSerializer.by yaoz*/
-  def addSerializer(partitionId: Int, serializer: KryoSerializer): Unit ={
-    val serId = serializer.getClass.getName.hashCode()
-    partitionIdToSerId(partitionId) = serId
-    //if not cache this serializer, put it to serializerMap
-    if(!serializerMap.contains(serId)){
-      serializerMap(serId) = serializer
-    }
-  }
-
-  /** add JavaSerializer.by yaoz*/
-  def addSerializer(partitionId: Int, serializer: JavaSerializer): Unit ={
-    val serId = serializer.getClass.getName.hashCode()
-    partitionIdToSerId(partitionId) = serId
-    //if not cache this serializer, put it to serializerMap
-    if(!serializerMap.contains(serId)){
-      serializerMap(serId) = serializer
-    }
-  }*/
 
   /** RDD size.by yaoz*/
   private[spark] var RDDSize: Double = 0

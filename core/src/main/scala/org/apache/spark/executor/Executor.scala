@@ -346,7 +346,7 @@ private[spark] class Executor(
         }
 
         // Set RDD size.by yaoz
-        val serializedResultSize = serializedResult.toString.size.toDouble
+        val serializedResultSize = SizeEstimator.estimate(serializedResult).toDouble
         val methodAddRDDSize = rdd.getClass.getMethod("addRDDSize", serializedResultSize.getClass)
         methodAddRDDSize.invoke(rdd, serializedResultSize: java.lang.Double)
 
