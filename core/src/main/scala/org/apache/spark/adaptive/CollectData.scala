@@ -41,7 +41,7 @@ private[spark] class CollectData(
   private[spark] var sleepTimeout: Long = 3000
 
   //memory threshold
-  private[spark] val memoyUpperThreshold =
+  private[spark] val memoryUpperThreshold =
     conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5) - 0.1
   private[spark] val memoryLowerThreshold =
     conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5) - 0.2
@@ -113,7 +113,7 @@ private[spark] class CollectData(
       //====================get I/O information====================//
 
       /** when memory usage reaches threshold change storage strategy.*/
-      if(memoryUsageFraction > memoyUpperThreshold && !adoptKryoSerializer){
+      if(memoryUsageFraction > memoryUpperThreshold && !adoptKryoSerializer){
         conKryoSerializer += 1
         if(proKryoSerializer > 0) {
           proKryoSerializer -= 1

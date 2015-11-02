@@ -241,7 +241,7 @@ private[spark] class Executor(
         // Run the actual task and measure its runtime.
         taskStart = System.currentTimeMillis()
         var threwException = true
-        val (value, accumUpdates) = try {
+        val (value: AnyRef, accumUpdates) = try {
           val res = task.run(
             taskAttemptId = taskId,
             attemptNumber = attemptNumber,

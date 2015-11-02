@@ -1614,6 +1614,7 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
    */
   private[spark] def persistRDD(rdd: RDD[_]) {
     persistentRdds(rdd.id) = rdd
+    // add cache RDD size.by yaoz
     if(rdd != null) {
       cachedRDDSize += rdd.getRDDSize
     }
@@ -1625,6 +1626,7 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
    */
   private[spark] def unpersistRDD(rddId: Int, blocking: Boolean = true) {
     env.blockManager.master.removeRdd(rddId, blocking)
+    // clean up persistedRDD and update related info.by yaoz
     val rdd = persistentRdds(rddId)
     if(rdd != null) {
       cachedRDDSize -= rdd.getRDDSize
