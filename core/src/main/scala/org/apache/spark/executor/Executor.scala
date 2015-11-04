@@ -273,18 +273,22 @@ private[spark] class Executor(
         //set this partition serializer
         val methodGetScheduler = execBackend.getClass.getMethod("getScheduler")
         val scheduler = methodGetScheduler.invoke(execBackend)
-        val methodGetDAGScheduler = scheduler.getClass.getMethod("getDAGScheduler")
-        val dagScheduler = methodGetDAGScheduler.invoke(scheduler)
-        val methodGetStage = dagScheduler.getClass.getMethod("getStage",task.stageId.getClass)
-        val stage = methodGetStage.invoke(dagScheduler,task.stageId:java.lang.Integer)
-        val methodGetRDD = stage.getClass.getMethod("getRDD")
-        val rdd = methodGetRDD.invoke(stage)
-        /*val methodAddSerializer = rdd.getClass.getMethod(
+        var rdd: AnyRef = null
+        var RDDId: Int = 0
+        if(scheduler != null) {
+          val methodGetDAGScheduler = scheduler.getClass.getMethod("getDAGScheduler")
+          val dagScheduler = methodGetDAGScheduler.invoke(scheduler)
+          val methodGetStage = dagScheduler.getClass.getMethod("getStage", task.stageId.getClass)
+          val stage = methodGetStage.invoke(dagScheduler, task.stageId: java.lang.Integer)
+          val methodGetRDD = stage.getClass.getMethod("getRDD")
+          rdd = methodGetRDD.invoke(stage)
+          /*val methodAddSerializer = rdd.getClass.getMethod(
           "addSerializer",task.partitionId.getClass,resultSerializer.getClass)
         methodAddSerializer.invoke(rdd,task.partitionId: java.lang.Integer,resultSerializer)*/
-        val methodGetRDDId = rdd.getClass.getMethod("getId")
-        val RDDId: Int = methodGetRDDId.invoke(rdd).toString.toInt
-        blockManager.addSerByRDDTaskId(RDDId.toString + "_" + taskId.toString, resultSerializer)
+          val methodGetRDDId = rdd.getClass.getMethod("getId")
+          RDDId = methodGetRDDId.invoke(rdd).toString.toInt
+          blockManager.addSerByRDDTaskId(RDDId.toString + "_" + taskId.toString, resultSerializer)
+        }
         // Get serialization time.by yaoz
         val beforeSerialization = System.currentTimeMillis()
         val valueBytes = resultSer.serialize(value)
@@ -346,9 +350,16 @@ private[spark] class Executor(
         }
 
         // Set RDD size.by yaoz
-        val serializedResultSize = SizeEstimator.estimate(serializedResult).toDouble
-        val methodAddRDDSize = rdd.getClass.getMethod("addRDDSize", serializedResultSize.getClass)
-        methodAddRDDSize.invoke(rdd, serializedResultSize: java.lang.Double)
+        if(rdd != null) {
+          val serializedResultSize = SizeEstimator.estimate(serializedResult).toDouble
+          val methodAddRDDSize = rdd.getClass.getMethod("addRDDSize", serializedResultSize.getClass)
+          methodAddRDDSize.invoke(rdd, serializedResultSize: java.lang.Double)
+          val methodIsPersisted = rdd.getClass.getMethod("isPersisted", RDDId.getClass)
+          val isPersisted = methodIsPersisted.invoke(rdd, RDDId: java.lang.Integer).toString
+          if(isPersisted == "true"){
+            env.updatePersistedRddSize(serializedResultSize)
+          }
+        }
 
         execBackend.statusUpdate(taskId, TaskState.FINISHED, serializedResult)
 

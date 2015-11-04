@@ -88,8 +88,20 @@ class SparkEnv (
 
   private var driverTmpDirToDelete: Option[String] = None
 
+  /**
+   * Lock that guards access to global variables that track SparkContext construction.
+   */
+  private val SPARK_ENV_CONSTRUCTOR_LOCK = new Object()
+
+  /** Update persisted Rdd Size.by yaoz*/
+  def updatePersistedRddSize(size: Double): Unit ={
+    SPARK_ENV_CONSTRUCTOR_LOCK.synchronized {
+      persistedRDDSize += size
+    }
+  }
+
   /** Get persisted RDD size.by yaoz*/
-  private[spark] var persistedRDDSize: Double = _
+  private[spark] var persistedRDDSize: Double = 0.0
 
   /** Get persisted RDD size.by yaoz*/
   def getPersistedRDDSize: Double = {

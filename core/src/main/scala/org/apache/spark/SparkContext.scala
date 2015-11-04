@@ -299,6 +299,17 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
 
   private[spark] def ui: Option[SparkUI] = _ui
 
+  /** Persisted RDD size.by yaoz*/
+  private[spark] var persistedRddSize: Double = 0.0
+
+  /** Update persisted RDD sizes.by yaoz*/
+  def updatePersistedRddSize(size: Double): Unit ={
+    this.synchronized {
+      persistedRddSize += size
+      _env.updatePersistedRddSize(size)
+    }
+  }
+
   /**
    * A default Hadoop Configuration for the Hadoop code (e.g. file systems) that we reuse.
    *
@@ -1601,24 +1612,11 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
     dagScheduler.getPreferredLocs(rdd, partition)
   }
 
-  /** Update persisted RDD size.by yaoz*/
-  private[spark] var cachedRDDSize: Double = 0
-
-  /** update sparkenv persisted rdd info.by yaoz*/
-  private[spark] def updatePersistedInfo {
-    _env.setPersistedRDDsize(cachedRDDSize)
-  }
-
   /**
    * Register an RDD to be persisted in memory and/or disk storage
    */
   private[spark] def persistRDD(rdd: RDD[_]) {
     persistentRdds(rdd.id) = rdd
-    // add cache RDD size.by yaoz
-    if(rdd != null) {
-      cachedRDDSize += rdd.getRDDSize
-    }
-    updatePersistedInfo
   }
 
   /**
@@ -1629,11 +1627,10 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
     // clean up persistedRDD and update related info.by yaoz
     val rdd = persistentRdds(rddId)
     if(rdd != null) {
-      cachedRDDSize -= rdd.getRDDSize
+      updatePersistedRddSize(-rdd.getRDDSize)
     }
     persistentRdds.remove(rddId)
     listenerBus.post(SparkListenerUnpersistRDD(rddId))
-    updatePersistedInfo
   }
 
   /**
@@ -2208,8 +2205,7 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
   /** Called by MetadataCleaner to clean up the persistentRdds map periodically */
   private[spark] def cleanup(cleanupTime: Long) {
     persistentRdds.clearOldValues(cleanupTime)
-    cachedRDDSize = 0
-    updatePersistedInfo
+    updatePersistedRddSize(-persistedRddSize)
   }
 
   // In order to prevent multiple SparkContexts from being active at the same time, mark this

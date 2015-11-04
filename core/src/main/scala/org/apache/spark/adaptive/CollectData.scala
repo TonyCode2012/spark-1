@@ -41,20 +41,22 @@ private[spark] class CollectData(
   private[spark] var sleepTimeout: Long = 3000
 
   //memory threshold
-  private[spark] val memoryUpperThreshold =
-    conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5) - 0.1
-  private[spark] val memoryLowerThreshold =
-    conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5) - 0.2
+  private[spark] val memoryUpperThreshold = 0.5
+  private[spark] val memoryLowerThreshold = 0.25
+
+  //Cached memory threshold
+  private[spark] val cachedMemFraUpThres =
+    conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5)
+  private[spark] val cachedMemFraLowThres =
+    conf.getOption("spark.storage.memoryFraction").map(_.toDouble).getOrElse(0.5) / 2
 
   //if jvm heap volume reaches indicated threshold,try to adopt KryoSerializer
   private[spark] var adoptKryoSerializer: Boolean = false
   private[spark] var conKryoSerializer: Int = 0
   private[spark] var proKryoSerializer: Int = 0
   
-  //current serializer
+  //strategy relation
   private [spark] var serializerCur = "org.apache.spark.serializer.JavaSerializer"
-
-  //strategy decision
   private[spark] var strategyDecision: StrategyDecision = new StrategyDecision(env,executor)
 
   override def run(): Unit = {
@@ -113,7 +115,15 @@ private[spark] class CollectData(
       //====================get I/O information====================//
 
       /** when memory usage reaches threshold change storage strategy.*/
-      if(memoryUsageFraction > memoryUpperThreshold && !adoptKryoSerializer){
+      if(memoryUsageFraction > memoryUpperThreshold || cachedMemFraction > cachedMemFraUpThres){
+        serializerCur = "org.apache.spark.serializer.KryoSerializer"
+        strategyDecision.changeSerializer(serializerCur)
+      }
+      if(memoryUsageFraction < memoryLowerThreshold || cachedMemFraction < cachedMemFraLowThres){
+        serializerCur = "org.apache.spark.serializer.JavaSerializer"
+        strategyDecision.changeSerializer(serializerCur)
+      }
+      /*if(memoryUsageFraction > memoryUpperThreshold && !adoptKryoSerializer){
         conKryoSerializer += 1
         if(proKryoSerializer > 0) {
           proKryoSerializer -= 1
@@ -140,7 +150,7 @@ private[spark] class CollectData(
         if(proKryoSerializer > 0) {
           proKryoSerializer -= 1
         }
-      }
+      }*/
 
       /** set collection data interval to 1ms. */
       try {
@@ -158,10 +168,7 @@ private[spark] class CollectData(
 }
 
 object CollectData{
-
-  //indicate whether the collecting data DeamonThread is started
+  //State flag
   private[spark] var isStarted: Boolean = false
-
-  //whether collector is running
   private[spark] var isRunning: Boolean = false
 }
